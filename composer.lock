@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "4b848ef2be286897a82857efbeefa306",
+    "content-hash": "0b0b12ded88eeefca7de5d91a99df3d6",
     "packages": [
         {
             "name": "artisan-build/built-for-cloud",

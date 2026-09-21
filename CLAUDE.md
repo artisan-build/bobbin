@@ -1,22 +1,22 @@
-# {{FILL: app name}}
+# Bobbin
 
-> **Built for Cloud app scaffold.** This app was created with
-> `artisan-build/built-for-cloud-starter`. Replace every `{{FILL: ...}}` marker with facts about this
-> app, then remove this blockquote. This repository is the app, not the starter kit.
+Bobbin gives integration teams named endpoints that durably catch third-party webhooks, preserve
+what arrived, and replay requests to one destination. It is a single-tenant Built for Cloud product
+deployed into the customer's Laravel Cloud account.
 
-{{FILL: Describe the problem this app solves, who it serves, and how it fits the Built for Cloud
-ecosystem. Include explicit non-goals so contributors and agents do not expand the product by guess.}}
+MVP non-goals are fan-out to multiple destinations, payload transformations, vendor-specific
+signature verification, cross-endpoint aggregation, and a body-blind MCP surface.
 
 ## Workflow
 
 See `.solo/workflow.md` for this app's repository, merge policy, hard gate, CI, and coordination
-details. Complete that file before delegating work.
+details.
 
 Hard gate before any PR: `composer ready` (ide-helper + rector + pint + phpstan + pest + audit).
 
 ## No Frontend Build Step
 
-Non-negotiable, inherited from the starter kit: **no Node, no npm, no Vite, no frontend build step.**
+Non-negotiable: **no Node, no npm, no Vite, no frontend build step.**
 Do not introduce one.
 
 Tailwind CSS is served from the committed bundle at `public/build/assets/app.css`. A class absent
@@ -26,8 +26,9 @@ optimizer uses a standalone Tailwind binary and does not introduce Node tooling.
 
 ## Built For Cloud
 
-{{FILL: Describe the app's Built for Cloud integration and where its app manifest is maintained.
-Keep this section accurate as capabilities are added.}}
+`artisan-build/built-for-cloud` provides Bobbin's authentication, ownership, and credential
+plumbing. The package-owned three-key manifest overlay is maintained in
+`config/built-for-cloud.php`; configure it only through the repository's frozen configure command.
 
 Laravel Cloud provisions resource configuration. Do not commit secrets, app IDs, personal config,
 machine-specific paths, or hand-written values that shadow Cloud-managed resource variables.

@@ -1,14 +1,14 @@
 {
     "$schema": "https://getcomposer.org/schema.json",
-    "name": "artisan-build/built-for-cloud-starter",
+    "name": "artisan-build/bobbin",
     "type": "project",
-    "description": "A nodeless Laravel starter kit for Built for Cloud products.",
+    "description": "A durable webhook inbox and relay for Laravel Cloud.",
     "keywords": [
+        "built-for-cloud",
         "laravel",
         "laravel-cloud",
-        "livewire",
         "nodeless",
-        "starter-kit"
+        "webhooks"
     ],
     "license": "MIT",
     "require": {
