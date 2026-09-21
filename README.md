@@ -22,7 +22,7 @@ signature verification, cross-endpoint aggregation, and a body-blind MCP surface
 
 Bobbin is a single-tenant Built for Cloud app intended to be deployed into each customer's own
 Laravel Cloud account. `artisan-build/built-for-cloud` supplies authentication and ownership
-plumbing. Catalog metadata remains unconfigured while its manifest checker contract is reconciled.
+plumbing. Its Built for Cloud product page is <https://scalpels.app/products/bobbin>.
 
 ## Local Development
 
