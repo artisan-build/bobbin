@@ -119,6 +119,37 @@ it('isolates endpoint data between teams', function (): void {
         ->assertDontSee($secretName);
 });
 
+it('denies endpoint management to an authenticated user without a team', function (): void {
+    $secretName = 'Unassigned user secret '.Str::random(12);
+    $attemptedName = 'Forbidden endpoint '.Str::random(12);
+    $endpoint = endpointForTeam(endpointTeamId(), $secretName);
+    $user = User::query()->create([
+        'name' => 'Unassigned operator',
+        'email' => Str::uuid().'@example.test',
+        'password' => Hash::make('test-password'),
+    ])->refresh();
+
+    $this->actingAs($user)->withSession([
+        StandaloneAccess::SESSION_VERSION_KEY => $user->auth_session_version,
+    ]);
+
+    $this->get(route('endpoints.index'))
+        ->assertForbidden()
+        ->assertDontSee($secretName);
+    $this->get(route('endpoints.create'))
+        ->assertForbidden()
+        ->assertDontSee($secretName);
+    $this->post(route('endpoints.store'), ['name' => $attemptedName])
+        ->assertForbidden()
+        ->assertDontSee($secretName);
+    $this->get(route('endpoints.show', $endpoint))
+        ->assertForbidden()
+        ->assertDontSee($secretName);
+
+    expect(DB::table('team_user')->where('user_id', $user->getKey())->count())->toBe(0)
+        ->and(Endpoint::query()->where('name', $attemptedName)->exists())->toBeFalse();
+});
+
 it('protects management routes without mounting capture or deletion routes', function (): void {
     foreach (['endpoints.index', 'endpoints.create', 'endpoints.store', 'endpoints.show'] as $name) {
         expect(Route::getRoutes()->getByName($name)?->gatherMiddleware())->toContain('bfc.auth');
