@@ -151,6 +151,88 @@ it('does not create a capture for an unknown public identifier', function (): vo
     expect(CapturedRequest::query()->count())->toBe(0);
 });
 
+it('redacts every selected header value case-insensitively and preserves sentinel values', function (): void {
+    $endpoint = captureEndpoint(captureTeamId(), 'Header redaction '.Str::random(12));
+    $selectedFirst = 'selected-first-'.Str::random(12);
+    $selectedSecond = 'selected-second-'.Str::random(12);
+    $sentinelFirst = CapturedRequest::REDACTION_MARKER;
+    $sentinelSecond = 'sentinel-second-'.Str::random(12);
+    $endpoint->update(['redacted_header_names' => ['x-secret-token']]);
+
+    sendCapture($endpoint, 'POST', headers: [
+        'X-SeCrEt-ToKeN' => [$selectedFirst, $selectedSecond],
+        'X-Unselected-Sentinel' => [$sentinelFirst, $sentinelSecond],
+    ])->assertNoContent();
+
+    $capture = CapturedRequest::query()->sole();
+    $storedHeaders = json_encode($capture->headers, JSON_THROW_ON_ERROR);
+
+    expect($storedHeaders)->not->toContain($selectedFirst, $selectedSecond)
+        ->and($capture->headers['x-secret-token'])->toBe([
+            CapturedRequest::REDACTION_MARKER,
+            CapturedRequest::REDACTION_MARKER,
+        ])
+        ->and($capture->redacted_header_names)->toBe(['x-secret-token'])
+        ->and($capture->headers['x-unselected-sentinel'])->toBe([$sentinelFirst, $sentinelSecond]);
+});
+
+it('redacts enabled bodies before persistence and preserves disabled body bytes', function (): void {
+    $endpoint = captureEndpoint(captureTeamId(), 'Body redaction '.Str::random(12));
+    $redactedBody = "\x00enabled-secret-".Str::random(12)."\xFF";
+    $preservedBody = "\x00disabled-secret-".Str::random(12)."\xFE";
+    $endpoint->update(['body_redaction' => true]);
+
+    sendCapture($endpoint, 'POST', $redactedBody)->assertNoContent();
+    $redacted = CapturedRequest::query()->sole();
+
+    expect($redacted->body)->toBe(CapturedRequest::REDACTION_MARKER)
+        ->not->toContain($redactedBody)
+        ->and($redacted->body_redacted)->toBeTrue();
+
+    $endpoint->update(['body_redaction' => false]);
+    sendCapture($endpoint, 'POST', $preservedBody)->assertNoContent();
+    $preserved = CapturedRequest::query()->latest('id')->firstOrFail();
+
+    expect($preserved->body)->toBe($preservedBody)
+        ->and($preserved->body_redacted)->toBeFalse();
+});
+
+it('applies changed redaction settings only to subsequent captures', function (): void {
+    $endpoint = captureEndpoint(captureTeamId(), 'Prospective redaction '.Str::random(12));
+    $earlierBody = 'earlier-body-'.Str::random(12);
+    $earlierHeader = 'earlier-header-'.Str::random(12);
+    $laterBody = 'later-body-'.Str::random(12);
+    $laterHeader = 'later-header-'.Str::random(12);
+
+    sendCapture($endpoint, 'POST', $earlierBody, headers: [
+        'X-Prospective-Secret' => [$earlierHeader],
+    ])->assertNoContent();
+    $earlier = CapturedRequest::query()->sole();
+    $earlierAttributes = $earlier->getRawOriginal();
+
+    $endpoint->update([
+        'redacted_header_names' => ['x-prospective-secret'],
+        'body_redaction' => true,
+    ]);
+    sendCapture($endpoint, 'POST', $laterBody, headers: [
+        'X-Prospective-Secret' => [$laterHeader],
+    ])->assertNoContent();
+
+    $earlier->refresh();
+    $later = CapturedRequest::query()->latest('id')->firstOrFail();
+
+    expect($earlier->getRawOriginal())->toBe($earlierAttributes)
+        ->and($earlier->body)->toBe($earlierBody)
+        ->and($earlier->headers['x-prospective-secret'])->toBe([$earlierHeader])
+        ->and($earlier->redacted_header_names)->toBe([])
+        ->and($earlier->body_redacted)->toBeFalse()
+        ->and($later->body)->toBe(CapturedRequest::REDACTION_MARKER)
+        ->and($later->headers['x-prospective-secret'])->toBe([CapturedRequest::REDACTION_MARKER])
+        ->and(json_encode($later->headers, JSON_THROW_ON_ERROR))->not->toContain($laterHeader)
+        ->and($later->redacted_header_names)->toBe(['x-prospective-secret'])
+        ->and($later->body_redacted)->toBeTrue();
+});
+
 it('does not acknowledge a request when persistence fails', function (): void {
     $endpoint = captureEndpoint(captureTeamId(), 'Failure '.Str::random(12));
     CapturedRequest::creating(function (): never {
@@ -219,6 +301,30 @@ it('renders empty and binary bodies with explicit reversible representations', f
         ->assertSeeText('Base64 encoded')
         ->assertSeeText('Decode this Base64 value to recover the exact stored bytes.')
         ->assertSeeText(base64_encode($binaryBody));
+});
+
+it('visibly labels only redactions recorded in capture metadata', function (): void {
+    $teamId = captureTeamId();
+    $user = captureTestUser($teamId);
+    $endpoint = captureEndpoint($teamId, 'Redaction labels '.Str::random(12));
+    $endpoint->update([
+        'redacted_header_names' => ['x-labelled-secret'],
+        'body_redaction' => true,
+    ]);
+    sendCapture($endpoint, 'POST', 'display-secret-'.Str::random(12), headers: [
+        'X-Labelled-Secret' => ['header-secret-'.Str::random(12)],
+        'X-Marker-Collision' => [CapturedRequest::REDACTION_MARKER],
+    ])->assertNoContent();
+    $capture = CapturedRequest::query()->sole();
+    actingAsCaptureUser($this, $user);
+
+    $detail = $this->get(route('captures.show', [$endpoint, $capture]))->assertOk();
+
+    expect(substr_count($detail->getContent(), 'data-testid="capture-header-redaction"'))->toBe(1)
+        ->and(substr_count($detail->getContent(), 'data-testid="capture-body-redaction"'))->toBe(1);
+    $detail->assertSeeText('Body bytes were removed before this capture was persisted.')
+        ->assertSeeText('x-marker-collision')
+        ->assertSeeText(CapturedRequest::REDACTION_MARKER);
 });
 
 it('does not disclose captures to a signed-out request', function (): void {
