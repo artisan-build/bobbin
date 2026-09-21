@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Console\Commands\PruneCapturedRequests;
+use App\Jobs\DeliverCapturedRequest;
 use ArtisanBuild\BuiltForCloud\Commands\ConsoleReKeyCommand;
 use ArtisanBuild\BuiltForCloud\Commands\ConsoleRetireKeyCommand;
 use ArtisanBuild\BuiltForCloud\Commands\CreateAdminCommand;
@@ -89,6 +90,7 @@ it('passes the version 1 reference-consumer conformance spec', function (): void
             CredentialMintCommand::class,
             CredentialRevokeCommand::class,
             CredentialRotateCommand::class,
+            DeliverCapturedRequest::class,
             HmacRewrapCommand::class,
             InstallOperatorCredentialCommand::class,
             OutboxDrainCommand::class,

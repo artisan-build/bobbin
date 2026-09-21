@@ -32,7 +32,7 @@ final class DispatchCapturedRequest
                     'captured_request_id' => $capturedRequest->getKey(),
                 ]);
 
-            DeliverCapturedRequest::dispatch($delivery->getKey())->afterCommit();
+            dispatch(new DeliverCapturedRequest($delivery->getKey()))->afterCommit();
 
             return $delivery;
         });
