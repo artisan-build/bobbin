@@ -84,7 +84,7 @@ function sendCapture(
         $request->headers->set($name, $values);
     }
 
-    $response = app(Kernel::class)->handle($request);
+    $response = resolve(Kernel::class)->handle($request);
 
     return TestResponse::fromBaseResponse($response);
 }

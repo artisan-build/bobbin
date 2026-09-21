@@ -19,7 +19,7 @@ namespace App\Models{
  * @property string $raw_query
  * @property array<string, list<string|null>> $headers
  * @property string $body
- * @property \Illuminate\Support\Carbon $received_at
+ * @property Carbon $received_at
  * @property-read \App\Models\Endpoint $endpoint
  * @method static \Illuminate\Database\Eloquent\Builder<static>|CapturedRequest newModelQuery()
  * @method static \Illuminate\Database\Eloquent\Builder<static>|CapturedRequest newQuery()
