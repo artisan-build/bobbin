@@ -99,8 +99,18 @@ function sendReplayCapture(
     return TestResponse::fromBaseResponse(resolve(Kernel::class)->handle($request));
 }
 
+/** @param array<string, list<string>> $answers */
+function replayPolicyResolver(array $answers = []): ReplayHostResolver
+{
+    return new ReplayHostResolver(array_replace([
+        'receiver.example.test' => ['93.184.216.34'],
+        'localhost' => ['93.184.216.34'],
+        'api.localhost' => ['93.184.216.34'],
+    ], $answers));
+}
+
 it('rejects unsafe destination URL classes deterministically', function (string $url, array $answers): void {
-    $policy = new DestinationUrlPolicy(new ReplayHostResolver($answers));
+    $policy = new DestinationUrlPolicy(replayPolicyResolver($answers));
 
     expect(fn () => $policy->assertSafe($url))->toThrow(InvalidArgumentException::class);
 })->with([
@@ -136,6 +146,14 @@ it('rejects unsafe destination URL classes deterministically', function (string 
     'fragment' => ['https://receiver.example.test/hook#fragment', []],
     'malformed port' => ['https://receiver.example.test:99999/hook', []],
 ]);
+
+it('accepts a clean destination with the unsafe URL test resolver', function (): void {
+    $policy = new DestinationUrlPolicy(replayPolicyResolver());
+
+    $policy->assertSafe('https://receiver.example.test/hook');
+
+    expect(true)->toBeTrue();
+});
 
 it('accepts a hostname only when every resolved address is public', function (): void {
     $policy = new DestinationUrlPolicy(new ReplayHostResolver([
@@ -228,15 +246,43 @@ it('rejects an unsafe destination through the protected configuration route', fu
     $teamId = replayTeamId();
     $endpoint = replayEndpoint($teamId, 'Unsafe destination');
     actingAsReplayUser($this, replayUser($teamId));
+    $submittedUrl = 'https://receiver.example.test/{'.Str::random(24).'}';
 
     $this->from(route('endpoint-settings.edit', $endpoint))
         ->put(route('destinations.update', $endpoint), [
-            'destination_url' => 'http://192.0.2.1/{credential}',
+            'destination_url' => $submittedUrl,
         ])
         ->assertRedirect(route('endpoint-settings.edit', $endpoint))
         ->assertSessionHasErrors('destination_url');
 
     expect($endpoint->destinations()->count())->toBe(0);
+    $this->get(route('endpoint-settings.edit', $endpoint))
+        ->assertOk()
+        ->assertDontSee($submittedUrl);
+});
+
+it('never flashes or renders rejected destination credentials', function (): void {
+    Queue::fake();
+    $teamId = replayTeamId();
+    $endpoint = replayEndpoint($teamId, 'Credential rejection');
+    actingAsReplayUser($this, replayUser($teamId));
+    $credential = Str::random(48);
+
+    $this->from(route('endpoint-settings.edit', $endpoint))
+        ->put(route('destinations.update', $endpoint), [
+            'destination_url' => 'https://operator:'.$credential.'@receiver.example.test/hook',
+        ])
+        ->assertRedirect(route('endpoint-settings.edit', $endpoint))
+        ->assertSessionHasErrors('destination_url')
+        ->assertSessionMissing('_old_input.destination_url');
+
+    expect(Destination::query()->count())->toBe(0)
+        ->and(Delivery::query()->count())->toBe(0);
+    Queue::assertNothingPushed();
+
+    $this->get(route('endpoint-settings.edit', $endpoint))
+        ->assertOk()
+        ->assertDontSee($credential);
 });
 
 it('fails the protected replay action closed for zero or multiple active destinations', function (int $active): void {
