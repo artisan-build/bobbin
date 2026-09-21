@@ -14,8 +14,16 @@ final class EndpointSettingsController extends Controller
     public function edit(Request $request, string $endpoint): View
     {
         $endpoint = $this->team($request)->endpoints()->findOrFail($endpoint);
+        $activeDestinations = $endpoint->destinations()
+            ->where('is_active', true)
+            ->limit(2)
+            ->get();
 
-        return view('endpoints.settings', ['endpoint' => $endpoint]);
+        return view('endpoints.settings', [
+            'endpoint' => $endpoint,
+            'activeDestination' => $activeDestinations->count() === 1 ? $activeDestinations->first() : null,
+            'destinationIntegrityError' => $activeDestinations->count() > 1,
+        ]);
     }
 
     public function update(Request $request, string $endpoint): RedirectResponse

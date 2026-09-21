@@ -25,6 +25,10 @@ final class CapturedRequestController extends Controller
     {
         $endpoint = $this->team($request)->endpoints()->findOrFail($endpoint);
         $capture = $endpoint->capturedRequests()->findOrFail($capture);
+        $deliveries = $capture->deliveries()
+            ->with('destination')
+            ->latest()
+            ->get();
         $contentType = strtolower((string) ($capture->headers['content-type'][0] ?? ''));
         $declaresText = $contentType === ''
             || str_starts_with($contentType, 'text/')
@@ -34,6 +38,8 @@ final class CapturedRequestController extends Controller
         return view('captures.show', [
             'endpoint' => $endpoint,
             'capture' => $capture,
+            'deliveries' => $deliveries,
+            'activeDestinationCount' => $endpoint->destinations()->where('is_active', true)->limit(2)->count(),
             'bodyIsText' => $declaresText
                 && mb_check_encoding($capture->body, 'UTF-8')
                 && ! $containsBinaryControlBytes,

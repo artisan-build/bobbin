@@ -6,11 +6,14 @@ namespace App\Jobs;
 
 use App\Models\CapturedRequest;
 use App\Models\Delivery;
+use App\Services\DestinationUrlPolicy;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Queue\Middleware\WithoutOverlapping;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use InvalidArgumentException;
 use RuntimeException;
 use Throwable;
 
@@ -28,6 +31,17 @@ final class DeliverCapturedRequest implements ShouldQueue
     public int $timeout = 30;
 
     public function __construct(public int $deliveryId) {}
+
+    /** @return list<WithoutOverlapping> */
+    public function middleware(): array
+    {
+        return [
+            (new WithoutOverlapping('delivery:'.$this->deliveryId))
+                ->shared()
+                ->dontRelease()
+                ->expireAfter($this->timeout + 30),
+        ];
+    }
 
     public function handle(): void
     {
@@ -70,6 +84,14 @@ final class DeliverCapturedRequest implements ShouldQueue
 
         if (in_array('connection', $capturedRequest->redacted_header_names, true)) {
             $this->recordFailure(null, 'Cannot safely replay a redacted Connection header.', false);
+
+            return;
+        }
+
+        try {
+            resolve(DestinationUrlPolicy::class)->assertSafe($delivery->destination->url);
+        } catch (InvalidArgumentException) {
+            $this->recordFailure(null, 'Destination is no longer safe to contact.', false);
 
             return;
         }

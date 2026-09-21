@@ -3,6 +3,8 @@
 namespace App\Providers;
 
 use App\Console\Commands\PruneCapturedRequests;
+use App\Contracts\ResolvesHostAddresses;
+use App\Services\NativeHostAddressResolver;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
@@ -17,6 +19,8 @@ class AppServiceProvider extends ServiceProvider
     #[\Override]
     public function register(): void
     {
+        $this->app->bind(ResolvesHostAddresses::class, NativeHostAddressResolver::class);
+
         $this->commands([
             PruneCapturedRequests::class,
         ]);

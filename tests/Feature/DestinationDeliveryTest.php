@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Contracts\ResolvesHostAddresses;
 use App\Jobs\DeliverCapturedRequest;
 use App\Models\CapturedRequest;
 use App\Models\Delivery;
@@ -21,6 +22,14 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
+use Tests\Support\ReplayHostResolver;
+
+beforeEach(function (): void {
+    app()->instance(ResolvesHostAddresses::class, new ReplayHostResolver([
+        'destination.example.test' => ['93.184.216.34'],
+        'redirected.example.test' => ['93.184.216.34'],
+    ]));
+});
 
 function deliveryEndpoint(): Endpoint
 {

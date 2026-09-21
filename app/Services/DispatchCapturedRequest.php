@@ -8,6 +8,7 @@ use App\Jobs\DeliverCapturedRequest;
 use App\Models\CapturedRequest;
 use App\Models\Delivery;
 use App\Models\Destination;
+use App\Models\Endpoint;
 use Illuminate\Support\Facades\DB;
 use UnexpectedValueException;
 
@@ -16,6 +17,8 @@ final class DispatchCapturedRequest
     public function dispatch(CapturedRequest $capturedRequest): Delivery
     {
         return DB::transaction(function () use ($capturedRequest): Delivery {
+            Endpoint::query()->whereKey($capturedRequest->endpoint_id)->lockForUpdate()->firstOrFail();
+
             $destinations = Destination::query()
                 ->where('endpoint_id', $capturedRequest->endpoint_id)
                 ->where('is_active', true)
