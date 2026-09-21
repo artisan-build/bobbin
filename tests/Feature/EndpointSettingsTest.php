@@ -120,6 +120,33 @@ it('rejects retention outside the inclusive bound and malformed header names', f
     'colon in header name' => [30, 'x-invalid: value'],
 ]);
 
+it('rejects Connection redaction without changing existing settings', function (): void {
+    $teamId = settingsTeamId();
+    $endpoint = settingsEndpoint($teamId, 'Connection validation '.Str::random(12));
+    $endpoint->update([
+        'retention_days' => 73,
+        'redacted_header_names' => ['x-existing-secret'],
+        'body_redaction' => true,
+    ]);
+    actingAsSettingsUser($this, settingsUser($teamId));
+
+    $this->from(route('endpoint-settings.edit', $endpoint))
+        ->put(route('endpoint-settings.update', $endpoint), [
+            'retention_days' => 14,
+            'redacted_header_names' => 'x-api-key, Connection',
+            'body_redaction' => '0',
+        ])
+        ->assertRedirect(route('endpoint-settings.edit', $endpoint))
+        ->assertSessionHasErrors([
+            'redacted_header_names' => 'The Connection header cannot be redacted because it is required for safe replay.',
+        ]);
+
+    $endpoint->refresh();
+    expect($endpoint->retention_days)->toBe(73)
+        ->and($endpoint->redacted_header_names)->toBe(['x-existing-secret'])
+        ->and($endpoint->body_redaction)->toBeTrue();
+});
+
 it('does not disclose or change settings for signed-out and cross-team requests', function (): void {
     $firstTeamId = settingsTeamId();
     $secondTeamId = DB::table('teams')->insertGetId([

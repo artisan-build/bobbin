@@ -32,6 +32,12 @@ final class EndpointSettingsController extends Controller
                     }
 
                     foreach ($this->normalizeHeaderNames($value) as $headerName) {
+                        if ($headerName === 'connection') {
+                            $fail('The Connection header cannot be redacted because it is required for safe replay.');
+
+                            return;
+                        }
+
                         if (preg_match('/^[!#$%&\'*+\-.^_`|~0-9A-Za-z]+$/D', $headerName) !== 1) {
                             $fail('Every header name must be a valid HTTP header name.');
 

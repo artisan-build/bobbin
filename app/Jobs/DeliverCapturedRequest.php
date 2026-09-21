@@ -12,6 +12,7 @@ use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
+use Throwable;
 
 final class DeliverCapturedRequest implements ShouldQueue
 {
@@ -67,9 +68,16 @@ final class DeliverCapturedRequest implements ShouldQueue
             ->findOrFail($this->deliveryId);
         $capturedRequest = $delivery->capturedRequest;
 
+        if (in_array('connection', $capturedRequest->redacted_header_names, true)) {
+            $this->recordFailure(null, 'Cannot safely replay a redacted Connection header.', false);
+
+            return;
+        }
+
         try {
             $response = Http::timeout(15)
                 ->connectTimeout(5)
+                ->withoutRedirecting()
                 ->send($capturedRequest->method, $this->targetUrl($delivery->destination->url, $capturedRequest), [
                     'headers' => $this->forwardedHeaders($capturedRequest),
                     'body' => $capturedRequest->body,
@@ -98,6 +106,19 @@ final class DeliverCapturedRequest implements ShouldQueue
             "Destination returned HTTP {$status}.",
             $status === 429 || ($status >= 500 && $status < 600),
         );
+    }
+
+    public function failed(?Throwable $exception): void
+    {
+        Delivery::query()
+            ->whereKey($this->deliveryId)
+            ->whereNotIn('status', [Delivery::STATUS_SUCCEEDED, Delivery::STATUS_FAILED])
+            ->update([
+                'status' => Delivery::STATUS_FAILED,
+                'response_status' => null,
+                'last_error' => 'Delivery failed after an unexpected queue error.',
+                'completed_at' => now(),
+            ]);
     }
 
     private function recordFailure(?int $status, string $error, bool $retryable): void
@@ -129,7 +150,9 @@ final class DeliverCapturedRequest implements ShouldQueue
             ? ($endsWithSeparator ? '' : '&')
             : '?';
 
-        return $url.$separator.$capturedRequest->raw_query.($fragment === null ? '' : '#'.$fragment);
+        $rawQuery = str_replace(['{', '}'], ['%7B', '%7D'], $capturedRequest->raw_query);
+
+        return $url.$separator.$rawQuery.($fragment === null ? '' : '#'.$fragment);
     }
 
     /** @return array<string, list<string>> */

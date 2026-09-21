@@ -8,6 +8,13 @@ use App\Models\Delivery;
 use App\Models\Destination;
 use App\Models\Endpoint;
 use App\Services\DispatchCapturedRequest;
+use GuzzleHttp\Client;
+use GuzzleHttp\Handler\MockHandler;
+use GuzzleHttp\HandlerStack;
+use GuzzleHttp\Middleware;
+use GuzzleHttp\Psr7\Response as GuzzleResponse;
+use Illuminate\Http\Client\Factory;
+use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -135,7 +142,8 @@ it('forwards the stored request with exact query body and permitted multi-value 
     $endpoint = deliveryEndpoint();
     $destination = deliveryDestination($endpoint);
     $destination->update(['url' => 'https://destination.example.test/webhook']);
-    $rawQuery = 'tag=one&tag=two&blank=&encoded=%2F%2b%20';
+    $rawQuery = 'tag=one&tag=two&blank=&encoded=%2F%2b%20&template={x}';
+    $outgoingQuery = 'tag=one&tag=two&blank=&encoded=%2F%2b%20&template=%7Bx%7D';
     $body = "\x00stored-body-".Str::random(12)."\xFF";
     $capture = deliveryCapture($endpoint, $rawQuery, $body, [
         'Host' => ['captured-host.example.test'],
@@ -157,9 +165,9 @@ it('forwards the stored request with exact query body and permitted multi-value 
 
     (new DeliverCapturedRequest($delivery->id))->handle();
 
-    Http::assertSent(function (Request $request) use ($rawQuery, $body): bool {
+    Http::assertSent(function (Request $request) use ($outgoingQuery, $body): bool {
         expect($request->method())->toBe('PATCH')
-            ->and($request->url())->toBe('https://destination.example.test/webhook?'.$rawQuery)
+            ->and($request->url())->toBe('https://destination.example.test/webhook?'.$outgoingQuery)
             ->and($request->body())->toBe($body)
             ->and($request->header('X-Multi-Value-Sentinel'))->toBe(['first-value', 'second-value'])
             ->and($request->header('Host'))->not->toContain('captured-host.example.test')
@@ -188,6 +196,69 @@ it('forwards the stored request with exact query body and permitted multi-value 
     (new DeliverCapturedRequest($delivery->id))->handle();
     Http::assertSentCount(1);
     expect($delivery->refresh()->attempt_count)->toBe(1);
+});
+
+it('treats a redirect as terminal without sending to the redirected host', function (): void {
+    $endpoint = deliveryEndpoint();
+    $delivery = deliveryRecord(deliveryDestination($endpoint), deliveryCapture($endpoint));
+    $responses = new MockHandler([
+        new GuzzleResponse(302, ['Location' => 'https://redirected.example.test/landing']),
+        new GuzzleResponse(200),
+    ]);
+    $handler = HandlerStack::create($responses);
+    /** @var list<array<string, mixed>> $history */
+    $history = [];
+    $handler->push(Middleware::history($history));
+    $originalFactory = Http::getFacadeRoot();
+    $factory = new class(new Client(['handler' => $handler])) extends Factory
+    {
+        public function __construct(private Client $client)
+        {
+            parent::__construct();
+        }
+
+        protected function newPendingRequest(): PendingRequest
+        {
+            return (new PendingRequest($this, $this->globalMiddleware))->setClient($this->client);
+        }
+    };
+    Http::swap($factory);
+
+    try {
+        (new DeliverCapturedRequest($delivery->id))->handle();
+    } finally {
+        Http::swap($originalFactory);
+    }
+
+    $delivery->refresh();
+    expect($history)->toHaveCount(1)
+        ->and((string) $history[0]['request']->getUri())->toStartWith('https://destination.example.test/')
+        ->and($delivery->status)->toBe(Delivery::STATUS_FAILED)
+        ->and($delivery->response_status)->toBe(302)
+        ->and($delivery->last_error)->toBe('Destination returned HTTP 302.')
+        ->and($delivery->completed_at)->not->toBeNull();
+});
+
+it('fails closed when Connection redaction makes nominated headers unknowable', function (): void {
+    $endpoint = deliveryEndpoint();
+    $capture = deliveryCapture($endpoint, headers: [
+        'connection' => [CapturedRequest::REDACTION_MARKER],
+        'x-connection-only' => ['must-not-survive'],
+        'x-sentinel' => ['first', 'second'],
+    ]);
+    $capture->update(['redacted_header_names' => ['connection']]);
+    $delivery = deliveryRecord(deliveryDestination($endpoint), $capture);
+    Http::fake();
+
+    (new DeliverCapturedRequest($delivery->id))->handle();
+
+    Http::assertNothingSent();
+    $delivery->refresh();
+    expect($delivery->status)->toBe(Delivery::STATUS_FAILED)
+        ->and($delivery->attempt_count)->toBe(1)
+        ->and($delivery->response_status)->toBeNull()
+        ->and($delivery->last_error)->toBe('Cannot safely replay a redacted Connection header.')
+        ->and($delivery->completed_at)->not->toBeNull();
 });
 
 it('fails a non-429 client response immediately and does not resend a terminal delivery', function (): void {
@@ -268,6 +339,39 @@ it('returns network errors to queued state without persisting exception details'
         ->and($delivery->last_error)->toBe('Destination connection failed.')
         ->and($delivery->last_error)->not->toContain($secret)
         ->and($delivery->completed_at)->toBeNull();
+});
+
+it('reconciles an unclassified terminal queue failure without overwriting terminal facts', function (): void {
+    $endpoint = deliveryEndpoint();
+    $delivery = deliveryRecord(deliveryDestination($endpoint), deliveryCapture($endpoint));
+    $secret = 'unexpected-secret-'.Str::random(12);
+    Http::fake(fn (): never => throw new LogicException($secret));
+
+    expect(fn (): int => Queue::connection('sync')->push(new DeliverCapturedRequest($delivery->id)))
+        ->toThrow(LogicException::class, $secret);
+
+    $delivery->refresh();
+    expect($delivery->status)->toBe(Delivery::STATUS_FAILED)
+        ->and($delivery->attempt_count)->toBe(1)
+        ->and($delivery->response_status)->toBeNull()
+        ->and($delivery->last_error)->toBe('Delivery failed after an unexpected queue error.')
+        ->and($delivery->last_error)->not->toContain($secret)
+        ->and($delivery->completed_at)->not->toBeNull();
+
+    $completedAt = $delivery->completed_at;
+    $delivery->update([
+        'status' => Delivery::STATUS_SUCCEEDED,
+        'response_status' => 204,
+        'last_error' => null,
+    ]);
+
+    (new DeliverCapturedRequest($delivery->id))->failed(new LogicException('must not overwrite'));
+
+    $delivery->refresh();
+    expect($delivery->status)->toBe(Delivery::STATUS_SUCCEEDED)
+        ->and($delivery->response_status)->toBe(204)
+        ->and($delivery->last_error)->toBeNull()
+        ->and($delivery->completed_at->equalTo($completedAt))->toBeTrue();
 });
 
 it('exhausts the declared finite retry policy and leaves a terminal failure', function (): void {
