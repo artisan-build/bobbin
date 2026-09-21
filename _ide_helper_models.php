@@ -19,18 +19,22 @@ namespace App\Models{
  * @property string $raw_query
  * @property array<string, list<string|null>> $headers
  * @property string $body
+ * @property list<string> $redacted_header_names
+ * @property bool $body_redacted
  * @property Carbon $received_at
  * @property-read \App\Models\Endpoint $endpoint
  * @method static \Illuminate\Database\Eloquent\Builder<static>|CapturedRequest newModelQuery()
  * @method static \Illuminate\Database\Eloquent\Builder<static>|CapturedRequest newQuery()
  * @method static \Illuminate\Database\Eloquent\Builder<static>|CapturedRequest query()
  * @method static \Illuminate\Database\Eloquent\Builder<static>|CapturedRequest whereBody($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|CapturedRequest whereBodyRedacted($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|CapturedRequest whereEndpointId($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|CapturedRequest whereHeaders($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|CapturedRequest whereId($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|CapturedRequest whereMethod($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|CapturedRequest whereRawQuery($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|CapturedRequest whereReceivedAt($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|CapturedRequest whereRedactedHeaderNames($value)
  * @mixin \Eloquent
  */
 	#[\AllowDynamicProperties]
@@ -43,6 +47,9 @@ namespace App\Models{
  * @property int $team_id
  * @property string $name
  * @property string $public_id
+ * @property int $retention_days
+ * @property list<string> $redacted_header_names
+ * @property bool $body_redaction
  * @property \Carbon\CarbonImmutable|null $created_at
  * @property \Carbon\CarbonImmutable|null $updated_at
  * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\CapturedRequest> $capturedRequests
@@ -50,10 +57,13 @@ namespace App\Models{
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Endpoint newModelQuery()
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Endpoint newQuery()
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Endpoint query()
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|Endpoint whereBodyRedaction($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Endpoint whereCreatedAt($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Endpoint whereId($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Endpoint whereName($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Endpoint wherePublicId($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|Endpoint whereRedactedHeaderNames($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|Endpoint whereRetentionDays($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Endpoint whereTeamId($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Endpoint whereUpdatedAt($value)
  * @mixin \Eloquent

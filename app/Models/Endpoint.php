@@ -12,13 +12,28 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property int $team_id
  * @property string $name
  * @property string $public_id
+ * @property int $retention_days
+ * @property list<string> $redacted_header_names
+ * @property bool $body_redaction
  *
  * @mixin IdeHelperEndpoint
  */
 final class Endpoint extends Model
 {
     /** @var list<string> */
-    protected $fillable = ['name'];
+    protected $fillable = [
+        'name',
+        'retention_days',
+        'redacted_header_names',
+        'body_redaction',
+    ];
+
+    /** @var array<string, mixed> */
+    protected $attributes = [
+        'retention_days' => 30,
+        'redacted_header_names' => '[]',
+        'body_redaction' => false,
+    ];
 
     /** @return HasMany<CapturedRequest, $this> */
     public function capturedRequests(): HasMany
@@ -29,6 +44,16 @@ final class Endpoint extends Model
     public function captureUrl(): string
     {
         return url('/hooks/'.$this->public_id);
+    }
+
+    /** @return array<string, string> */
+    protected function casts(): array
+    {
+        return [
+            'retention_days' => 'integer',
+            'redacted_header_names' => 'array',
+            'body_redaction' => 'boolean',
+        ];
     }
 
     protected static function booted(): void

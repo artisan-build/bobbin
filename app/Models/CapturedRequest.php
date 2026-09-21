@@ -15,13 +15,23 @@ use Illuminate\Support\Carbon;
  * @property string $raw_query
  * @property array<string, list<string|null>> $headers
  * @property string $body
+ * @property list<string> $redacted_header_names
+ * @property bool $body_redacted
  * @property Carbon $received_at
  *
  * @mixin IdeHelperCapturedRequest
  */
 final class CapturedRequest extends Model
 {
+    public const string REDACTION_MARKER = '[redacted by Bobbin]';
+
     public $timestamps = false;
+
+    /** @var array<string, mixed> */
+    protected $attributes = [
+        'redacted_header_names' => '[]',
+        'body_redacted' => false,
+    ];
 
     /** @var list<string> */
     protected $fillable = [
@@ -29,6 +39,8 @@ final class CapturedRequest extends Model
         'raw_query',
         'headers',
         'body',
+        'redacted_header_names',
+        'body_redacted',
         'received_at',
     ];
 
@@ -43,6 +55,8 @@ final class CapturedRequest extends Model
     {
         return [
             'headers' => 'array',
+            'redacted_header_names' => 'array',
+            'body_redacted' => 'boolean',
             'received_at' => 'immutable_datetime',
         ];
     }

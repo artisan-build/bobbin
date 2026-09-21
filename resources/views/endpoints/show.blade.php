@@ -14,11 +14,16 @@
                 <div class="mt-3 rounded-2xl border border-stone-700 bg-stone-950 p-4">
                     <code class="break-all text-sm leading-6 text-amber-200">{{ $endpoint->captureUrl() }}</code>
                 </div>
-                <div class="mt-6 flex items-center justify-between gap-4">
+                <div class="mt-6 flex flex-wrap items-center justify-between gap-4">
                     <p class="text-sm leading-6 text-stone-500">Requests sent to this address are stored before they are acknowledged.</p>
-                    <a href="{{ route('captures.index', $endpoint) }}" class="shrink-0 rounded-full border border-amber-300/50 px-4 py-2 text-sm font-semibold text-amber-200 hover:border-amber-200 hover:text-amber-100">
-                        View captures
-                    </a>
+                    <div class="flex gap-3">
+                        <a href="{{ route('endpoint-settings.edit', $endpoint) }}" class="shrink-0 rounded-full border border-stone-700 px-4 py-2 text-sm font-semibold text-stone-200 hover:border-stone-400 hover:text-white">
+                            Security settings
+                        </a>
+                        <a href="{{ route('captures.index', $endpoint) }}" class="shrink-0 rounded-full border border-amber-300/50 px-4 py-2 text-sm font-semibold text-amber-200 hover:border-amber-200 hover:text-amber-100">
+                            View captures
+                        </a>
+                    </div>
                 </div>
             </div>
         </div>

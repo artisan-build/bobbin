@@ -159,6 +159,10 @@ it('protects management and inspection routes while leaving only ingest public',
         expect(Route::getRoutes()->getByName($name)?->gatherMiddleware())->toContain('bfc.auth');
     }
 
+    foreach (['endpoint-settings.edit', 'endpoint-settings.update'] as $name) {
+        expect(Route::getRoutes()->getByName($name)?->gatherMiddleware())->toContain('bfc.auth');
+    }
+
     expect(Route::has('endpoints.destroy'))->toBeFalse()
         ->and(Route::getRoutes()->getByName('hooks.capture')?->gatherMiddleware())->not->toContain('bfc.auth');
 });
