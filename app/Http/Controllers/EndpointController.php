@@ -38,7 +38,7 @@ final class EndpointController extends Controller
         $endpoint->team_id = $this->teamId($request);
         $endpoint->save();
 
-        return redirect()->route('endpoints.show', $endpoint);
+        return to_route('endpoints.show', $endpoint);
     }
 
     public function show(Request $request, Endpoint $endpoint): View

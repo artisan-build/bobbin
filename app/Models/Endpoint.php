@@ -11,6 +11,8 @@ use Illuminate\Database\Eloquent\Model;
  * @property int $team_id
  * @property string $name
  * @property string $public_id
+ *
+ * @mixin IdeHelperEndpoint
  */
 final class Endpoint extends Model
 {
