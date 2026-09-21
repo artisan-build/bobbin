@@ -10,6 +10,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 /**
  * @property int $id
  * @property string $name
+ *
+ * @mixin IdeHelperTeam
  */
 final class Team extends Model
 {
