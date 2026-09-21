@@ -120,6 +120,8 @@ it('rejects unsafe destination URL classes deterministically', function (string 
     'link-local IPv6' => ['http://[fe80::1]/hook', []],
     'documentation IPv6' => ['http://[2001:db8::1]/hook', []],
     'multicast IPv6' => ['http://[ff02::1]/hook', []],
+    'outside global unicast IPv6 lower range' => ['http://[4000::1]/hook', []],
+    'outside global unicast IPv6 upper range' => ['http://[8000::1]/hook', []],
     'unspecified IPv6' => ['http://[::]/hook', []],
     'mixed public and private answers' => [
         'https://mixed.example.test/hook',
@@ -403,7 +405,7 @@ it('revalidates a configured destination before send without leaking its URL int
     $delivery = Delivery::query()->sole();
 
     /** @var ReplayHostResolver $resolver */
-    $resolver = app(ResolvesHostAddresses::class);
+    $resolver = resolve(ResolvesHostAddresses::class);
     $resolver->answers['receiver.example.test'] = ['127.0.0.1'];
     Http::fake();
 

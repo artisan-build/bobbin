@@ -108,6 +108,11 @@ final readonly class DestinationUrlPolicy
 
     private function isPublicAddress(string $address): bool
     {
+        if (filter_var($address, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6) !== false
+            && ! IpUtils::checkIp($address, '2000::/3')) {
+            return false;
+        }
+
         return filter_var($address, FILTER_VALIDATE_IP) !== false
             && ! IpUtils::checkIp($address, self::NON_PUBLIC_NETWORKS);
     }

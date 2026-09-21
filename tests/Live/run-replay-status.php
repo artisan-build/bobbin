@@ -8,6 +8,7 @@ use GuzzleHttp\Cookie\CookieJar;
 use Illuminate\Contracts\Console\Kernel;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Sleep;
 use Psr\Http\Message\ResponseInterface;
 use Symfony\Component\Process\Process;
 
@@ -96,9 +97,9 @@ try {
         'timeout' => 10,
     ]);
 
-    $login = request($client, 'GET', '/bfc/login', 200);
+    $login = sendHarnessRequest($client, 'GET', '/bfc/login', 200);
     $loginToken = csrfToken($login);
-    request($client, 'POST', '/bfc/login', 302, [
+    sendHarnessRequest($client, 'POST', '/bfc/login', 302, [
         'form_params' => [
             '_token' => $loginToken,
             'email' => $email,
@@ -106,8 +107,8 @@ try {
         ],
     ]);
 
-    $create = request($client, 'GET', '/endpoints/create', 200);
-    $created = requestResponse($client, 'POST', '/endpoints', 302, [
+    $create = sendHarnessRequest($client, 'GET', '/endpoints/create', 200);
+    $created = sendHarnessResponse($client, 'POST', '/endpoints', 302, [
         'form_params' => [
             '_token' => csrfToken($create),
             'name' => 'Live replay '.bin2hex(random_bytes(4)),
@@ -120,15 +121,15 @@ try {
     }
 
     $endpointId = $endpointMatch[1];
-    $endpointDetail = request($client, 'GET', $endpointPath, 200);
+    $endpointDetail = sendHarnessRequest($client, 'GET', $endpointPath, 200);
 
     if (preg_match('~/hooks/([a-f0-9]{32})~', $endpointDetail, $hookMatch) !== 1) {
         throw new RuntimeException('The endpoint detail did not expose its capture URL.');
     }
 
     $settingsPath = '/endpoints/'.$endpointId.'/settings';
-    $settings = request($client, 'GET', $settingsPath, 200);
-    request($client, 'POST', '/endpoints/'.$endpointId.'/destination', 302, [
+    $settings = sendHarnessRequest($client, 'GET', $settingsPath, 200);
+    sendHarnessRequest($client, 'POST', '/endpoints/'.$endpointId.'/destination', 302, [
         'form_params' => [
             '_token' => csrfToken($settings),
             '_method' => 'PUT',
@@ -138,7 +139,7 @@ try {
 
     $rawQuery = 'tag=one&tag=two&blank=&encoded=%2F%2b%20';
     $body = '{"live":"'.bin2hex(random_bytes(8)).'"}';
-    request($client, 'PATCH', '/hooks/'.$hookMatch[1].'?'.$rawQuery, 204, [
+    sendHarnessRequest($client, 'PATCH', '/hooks/'.$hookMatch[1].'?'.$rawQuery, 204, [
         'body' => $body,
         'headers' => [
             'Content-Type' => 'application/json',
@@ -146,7 +147,7 @@ try {
         ],
     ]);
 
-    $captureIndex = request($client, 'GET', '/endpoints/'.$endpointId.'/captures', 200);
+    $captureIndex = sendHarnessRequest($client, 'GET', '/endpoints/'.$endpointId.'/captures', 200);
 
     if (preg_match('~href="[^"]*(/endpoints/'.$endpointId.'/captures/(\d+))"~', $captureIndex, $captureMatch) !== 1) {
         throw new RuntimeException('The protected capture index did not expose the captured row.');
@@ -154,8 +155,8 @@ try {
 
     $capturePath = html_entity_decode($captureMatch[1], ENT_QUOTES);
     $captureId = $captureMatch[2];
-    $captureDetail = request($client, 'GET', $capturePath, 200);
-    request($client, 'POST', $capturePath.'/replay', 302, [
+    $captureDetail = sendHarnessRequest($client, 'GET', $capturePath, 200);
+    sendHarnessRequest($client, 'POST', $capturePath.'/replay', 302, [
         'form_params' => ['_token' => csrfToken($captureDetail)],
     ]);
 
@@ -171,7 +172,7 @@ try {
         '--no-interaction',
     ], $basePath, $environment, 40);
 
-    $terminalDetail = request($client, 'GET', $capturePath, 200);
+    $terminalDetail = sendHarnessRequest($client, 'GET', $capturePath, 200);
 
     if (! str_contains($terminalDetail, 'data-testid="delivery-history"')
         || ! str_contains($terminalDetail, 'succeeded')
@@ -184,7 +185,7 @@ try {
     }
 
     $observed = waitForReceiver($receiverOutput);
-    $observedValues = array_map('trim', explode(',', (string) ($observed['headers']['x-bobbin-live'] ?? '')));
+    $observedValues = array_map(trim(...), explode(',', (string) ($observed['headers']['x-bobbin-live'] ?? '')));
 
     if (($observed['method'] ?? null) !== 'PATCH'
         || ($observed['query'] ?? null) !== 'configured=yes&'.$rawQuery
@@ -258,20 +259,20 @@ function waitForUrl(string $url): void
         } catch (Throwable) {
         }
 
-        usleep(100_000);
+        Sleep::usleep(100_000);
     } while (microtime(true) < $deadline);
 
     throw new RuntimeException('A local live verification server did not become ready.');
 }
 
 /** @param array<string, mixed> $options */
-function request(Client $client, string $method, string $path, int $expectedStatus, array $options = []): string
+function sendHarnessRequest(Client $client, string $method, string $path, int $expectedStatus, array $options = []): string
 {
-    return (string) requestResponse($client, $method, $path, $expectedStatus, $options)->getBody();
+    return (string) sendHarnessResponse($client, $method, $path, $expectedStatus, $options)->getBody();
 }
 
 /** @param array<string, mixed> $options */
-function requestResponse(
+function sendHarnessResponse(
     Client $client,
     string $method,
     string $path,
@@ -328,7 +329,7 @@ function waitForReceiver(string $path): array
             }
         }
 
-        usleep(100_000);
+        Sleep::usleep(100_000);
     } while (microtime(true) < $deadline);
 
     throw new RuntimeException('The local receiver did not observe a replay request.');
