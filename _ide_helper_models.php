@@ -22,6 +22,8 @@ namespace App\Models{
  * @property list<string> $redacted_header_names
  * @property bool $body_redacted
  * @property Carbon $received_at
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\Delivery> $deliveries
+ * @property-read int|null $deliveries_count
  * @property-read \App\Models\Endpoint $endpoint
  * @method static \Illuminate\Database\Eloquent\Builder<static>|CapturedRequest newModelQuery()
  * @method static \Illuminate\Database\Eloquent\Builder<static>|CapturedRequest newQuery()
@@ -44,6 +46,46 @@ namespace App\Models{
 namespace App\Models{
 /**
  * @property int $id
+ * @property int $destination_id
+ * @property int $captured_request_id
+ * @property string $status
+ * @property int $attempt_count
+ * @property int|null $response_status
+ * @property string|null $last_error
+ * @property Carbon|null $started_at
+ * @property Carbon|null $completed_at
+ * @property-read \App\Models\CapturedRequest|null $capturedRequest
+ * @property-read \App\Models\Destination|null $destination
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|Delivery newModelQuery()
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|Delivery newQuery()
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|Delivery query()
+ * @mixin \Eloquent
+ */
+	#[\AllowDynamicProperties]
+	final class IdeHelperDelivery {}
+}
+
+namespace App\Models{
+/**
+ * @property int $id
+ * @property int $endpoint_id
+ * @property string $url
+ * @property bool $is_active
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\Delivery> $deliveries
+ * @property-read int|null $deliveries_count
+ * @property-read \App\Models\Endpoint|null $endpoint
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|Destination newModelQuery()
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|Destination newQuery()
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|Destination query()
+ * @mixin \Eloquent
+ */
+	#[\AllowDynamicProperties]
+	final class IdeHelperDestination {}
+}
+
+namespace App\Models{
+/**
+ * @property int $id
  * @property int $team_id
  * @property string $name
  * @property string $public_id
@@ -54,6 +96,8 @@ namespace App\Models{
  * @property \Carbon\CarbonImmutable|null $updated_at
  * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\CapturedRequest> $capturedRequests
  * @property-read int|null $captured_requests_count
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\Destination> $destinations
+ * @property-read int|null $destinations_count
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Endpoint newModelQuery()
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Endpoint newQuery()
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Endpoint query()
