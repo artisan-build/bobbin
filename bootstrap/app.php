@@ -21,7 +21,7 @@ return Application::configure(basePath: dirname(__DIR__))
         OptimizeTailwind::class,
     ])
     ->withMiddleware(function (Middleware $middleware): void {
-        //
+        $middleware->validateCsrfTokens(except: ['hooks/*']);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         //

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /**
  * @property int $id
@@ -18,6 +19,12 @@ final class Endpoint extends Model
 {
     /** @var list<string> */
     protected $fillable = ['name'];
+
+    /** @return HasMany<CapturedRequest, $this> */
+    public function capturedRequests(): HasMany
+    {
+        return $this->hasMany(CapturedRequest::class);
+    }
 
     public function captureUrl(): string
     {
