@@ -16,6 +16,7 @@ final class CaptureController extends Controller
         $endpoint = Endpoint::query()->where('public_id', $publicId)->firstOrFail();
         $rawQuery = $request->server->get('QUERY_STRING', '');
         $headers = $request->headers->all();
+        unset($headers['php-auth-user'], $headers['php-auth-pw'], $headers['php-auth-digest']);
         $selectedHeaders = array_fill_keys($endpoint->redacted_header_names, true);
         $redactedHeaderNames = [];
 

@@ -176,6 +176,47 @@ it('redacts every selected header value case-insensitively and preserves sentine
         ->and($capture->headers['x-unselected-sentinel'])->toBe([$sentinelFirst, $sentinelSecond]);
 });
 
+it('drops synthetic basic authentication headers before persistence', function (): void {
+    $endpoint = captureEndpoint(captureTeamId(), 'Basic authentication '.Str::random(12));
+    $username = 'basic-user-'.Str::random(12);
+    $password = 'basic-password-'.Str::random(12);
+    $endpoint->update(['redacted_header_names' => ['authorization']]);
+    $request = Request::create('/hooks/'.$endpoint->public_id, 'POST', server: [
+        'HTTP_AUTHORIZATION' => 'Basic '.base64_encode($username.':'.$password),
+    ]);
+
+    TestResponse::fromBaseResponse(resolve(Kernel::class)->handle($request))->assertNoContent();
+
+    $capture = CapturedRequest::query()->sole();
+    $storedHeaders = json_encode($capture->headers, JSON_THROW_ON_ERROR);
+
+    expect($storedHeaders)->not->toContain($username, $password)
+        ->and(array_key_exists('php-auth-user', $capture->headers))->toBeFalse()
+        ->and(array_key_exists('php-auth-pw', $capture->headers))->toBeFalse()
+        ->and(array_key_exists('php-auth-digest', $capture->headers))->toBeFalse()
+        ->and($capture->headers['authorization'])->toBe([CapturedRequest::REDACTION_MARKER])
+        ->and($capture->redacted_header_names)->toBe(['authorization']);
+});
+
+it('drops the synthetic digest authentication header before persistence', function (): void {
+    $endpoint = captureEndpoint(captureTeamId(), 'Digest authentication '.Str::random(12));
+    $digestResponse = 'digest-response-'.Str::random(12);
+    $endpoint->update(['redacted_header_names' => ['authorization']]);
+    $request = Request::create('/hooks/'.$endpoint->public_id, 'POST', server: [
+        'HTTP_AUTHORIZATION' => 'Digest username="digest-user", realm="bobbin", nonce="nonce", uri="/", response="'.$digestResponse.'"',
+    ]);
+
+    TestResponse::fromBaseResponse(resolve(Kernel::class)->handle($request))->assertNoContent();
+
+    $capture = CapturedRequest::query()->sole();
+    $storedHeaders = json_encode($capture->headers, JSON_THROW_ON_ERROR);
+
+    expect($storedHeaders)->not->toContain($digestResponse)
+        ->and(array_key_exists('php-auth-digest', $capture->headers))->toBeFalse()
+        ->and($capture->headers['authorization'])->toBe([CapturedRequest::REDACTION_MARKER])
+        ->and($capture->redacted_header_names)->toBe(['authorization']);
+});
+
 it('redacts enabled bodies before persistence and preserves disabled body bytes', function (): void {
     $endpoint = captureEndpoint(captureTeamId(), 'Body redaction '.Str::random(12));
     $redactedBody = "\x00enabled-secret-".Str::random(12)."\xFF";
