@@ -41,6 +41,12 @@ final class Endpoint extends Model
         return $this->hasMany(CapturedRequest::class);
     }
 
+    /** @return HasMany<Destination, $this> */
+    public function destinations(): HasMany
+    {
+        return $this->hasMany(Destination::class);
+    }
+
     public function captureUrl(): string
     {
         return url('/hooks/'.$this->public_id);

@@ -6,6 +6,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Carbon;
 
 /**
@@ -48,6 +49,12 @@ final class CapturedRequest extends Model
     public function endpoint(): BelongsTo
     {
         return $this->belongsTo(Endpoint::class);
+    }
+
+    /** @return HasMany<Delivery, $this> */
+    public function deliveries(): HasMany
+    {
+        return $this->hasMany(Delivery::class);
     }
 
     /** @return array<string, string> */
