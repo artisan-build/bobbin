@@ -12,11 +12,11 @@ it('owns only the D-UI-3 application configuration overlay', function (): void {
 
     expect($appConfig)->toBe([
         'manifest' => [
-            'name' => null,
-            'slug' => null,
-            'description' => null,
-            'icon' => null,
-            'product_url' => null,
+            'name' => 'Bobbin',
+            'slug' => 'bobbin',
+            'description' => 'Catch third-party webhooks, inspect exactly what arrived, and replay them onward.',
+            'icon' => 'https://scalpels.app/products/bobbin/icon.svg',
+            'product_url' => 'https://scalpels.app/products/bobbin',
         ],
         'credentials' => [
             'guard' => 'bfc',
@@ -47,11 +47,11 @@ it('merges package defaults and auto-discovers the released provider', function 
     assert(is_string($version));
 
     expect(config('built-for-cloud.manifest'))->toBe([
-        'name' => null,
-        'slug' => null,
-        'description' => null,
-        'icon' => null,
-        'product_url' => null,
+        'name' => 'Bobbin',
+        'slug' => 'bobbin',
+        'description' => 'Catch third-party webhooks, inspect exactly what arrived, and replay them onward.',
+        'icon' => 'https://scalpels.app/products/bobbin/icon.svg',
+        'product_url' => 'https://scalpels.app/products/bobbin',
     ])->and(config('built-for-cloud.ui'))->toBe([
         'landing_page' => false,
         'member_management' => false,

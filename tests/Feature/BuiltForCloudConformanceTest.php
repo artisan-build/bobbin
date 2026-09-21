@@ -29,6 +29,8 @@ use Composer\InstalledVersions;
 uses(ContractAssertions::class);
 
 it('passes the version 1 reference-consumer conformance spec', function (): void {
+    config()->set('app.key', 'base64:'.base64_encode(random_bytes(32)));
+
     $packageRoot = InstalledVersions::getInstallPath('artisan-build/built-for-cloud');
     expect($packageRoot)->toBeString();
 
@@ -115,7 +117,7 @@ it('passes the version 1 reference-consumer conformance spec', function (): void
     ];
 
     $report = (new FleetConformance($this))->assert(new ConsumerConformance(
-        consumer: 'built-for-cloud-starter',
+        consumer: 'bobbin',
         consumerRoot: base_path(),
         packageRoot: $packageRoot,
         sourceRoots: $sourceRoots,

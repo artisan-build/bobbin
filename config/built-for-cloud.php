@@ -4,20 +4,19 @@ declare(strict_types=1);
 
 return [
     'manifest' => [
-        'name' => null,
-        'slug' => null,
-        'description' => null,
-        'icon' => null,
-        'product_url' => null,
+        'name' => 'Bobbin',
+        'slug' => 'bobbin',
+        'description' => 'Catch third-party webhooks, inspect exactly what arrived, and replay them onward.',
+        'icon' => 'https://scalpels.app/products/bobbin/icon.svg',
+        'product_url' => 'https://scalpels.app/products/bobbin',
     ],
-
     'credentials' => [
-        'guard' => env('BUILT_FOR_CLOUD_CREDENTIAL_GUARD', 'bfc'),
+        'guard' => 'bfc',
         'declaration' => null,
         'session_guard' => null,
-        'app_purposes' => [],
+        'app_purposes' => [
+        ],
     ],
-
     'ui' => [
         'landing_page' => false,
         'member_management' => false,
@@ -25,6 +24,7 @@ return [
         'installation_credentials' => false,
         'session_management' => false,
         'managed_transitions' => false,
-        'credential_purposes' => [],
+        'credential_purposes' => [
+        ],
     ],
 ];

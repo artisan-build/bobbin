@@ -1,22 +1,28 @@
-# {{FILL: app name}}
+# Bobbin
 
-> **Built for Cloud app scaffold.** Replace every `{{FILL: ...}}` marker with product-specific
-> information, then remove this blockquote.
-
-{{FILL: One-sentence description of the app and the problem it solves.}}
+Bobbin gives integration teams named endpoints for receiving, inspecting, and eventually replaying
+third-party webhooks without the RequestBin and tunnel debugging loop.
 
 ## Who It Is For
 
-{{FILL: Describe the primary users and the outcome they need.}}
+Bobbin is for developers and operators who need a durable address for an integration's webhook
+traffic and a clear place to inspect what arrived.
 
 ## What It Does
 
-{{FILL: List the app's current capabilities. Do not describe planned features as shipped.}}
+- Create named webhook endpoints within the signed-in operator's team.
+- List and inspect that team's endpoints.
+- Reserve a stable, cryptographically random capture URL for each endpoint.
+
+Public request capture, retention and redaction controls, and replay delivery are not implemented in
+this product slice. MVP explicitly excludes fan-out, payload transformations, vendor-specific
+signature verification, cross-endpoint aggregation, and a body-blind MCP surface.
 
 ## Built For Cloud
 
-{{FILL: Explain how this app participates in the Built for Cloud ecosystem and link to its product
-surface when one exists.}}
+Bobbin is a single-tenant Built for Cloud app intended to be deployed into each customer's own
+Laravel Cloud account. `artisan-build/built-for-cloud` supplies authentication and ownership
+plumbing. Its Built for Cloud product page is <https://scalpels.app/products/bobbin>.
 
 ## Local Development
 
@@ -28,13 +34,17 @@ composer dev
 This app is nodeless by design. Do not add Node, npm, Vite, or a frontend build step. Static assets
 are committed under `public/build`.
 
+Run the focused endpoint-management tests with:
+
+```bash
+php artisan test tests/Feature/EndpointManagementTest.php
+```
+
 ## Quality Gate
 
 ```bash
 composer ready
 ```
-
-{{FILL: Document any additional focused or integration test commands required by this app.}}
 
 ## Deployment
 
@@ -44,9 +54,9 @@ the authenticated Laravel Cloud CLI; discover application and environment identi
 guessing or committing them. Keep `.cloud/config.json` uncommitted, and verify the application and
 its attached resources after every deployment.
 
-{{FILL: Document the app-specific Laravel Cloud deployment workflow and environments without
-committing secrets, identifiers, or machine-specific configuration.}}
+No app-specific Cloud environments or resource identifiers are committed. Discover the target at
+deployment time and allow Laravel Cloud to inject configuration for provisioned resources.
 
 ## Repository
 
-{{FILL: owner/repo URL}}
+<https://github.com/artisan-build/bobbin>

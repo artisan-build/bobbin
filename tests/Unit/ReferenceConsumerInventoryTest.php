@@ -31,9 +31,11 @@ PHP];
     return $root;
 }
 
-it('finds no app-owned auth or root surface in the exported starter tree', function (): void {
-    expect(ReferenceConsumerInventory::inspect(dirname(__DIR__, 2)))
-        ->toBe(array_fill_keys(ReferenceConsumerInventory::FAMILIES, []));
+it('pins the Bobbin root surface while retaining the thin auth host', function (): void {
+    $expected = array_fill_keys(ReferenceConsumerInventory::FAMILIES, []);
+    $expected['starter_root_collision'] = ['routes/web.php'];
+
+    expect(ReferenceConsumerInventory::inspect(dirname(__DIR__, 2)))->toBe($expected);
 });
 
 it('observes every independently introduced inventory control red', function (array $families, array $files): void {
