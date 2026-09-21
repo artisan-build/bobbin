@@ -150,13 +150,15 @@ it('denies endpoint management to an authenticated user without a team', functio
         ->and(Endpoint::query()->where('name', $attemptedName)->exists())->toBeFalse();
 });
 
-it('protects management routes without mounting capture or deletion routes', function (): void {
+it('protects management and inspection routes while leaving only ingest public', function (): void {
     foreach (['endpoints.index', 'endpoints.create', 'endpoints.store', 'endpoints.show'] as $name) {
         expect(Route::getRoutes()->getByName($name)?->gatherMiddleware())->toContain('bfc.auth');
     }
 
-    $uris = collect(Route::getRoutes()->getRoutes())->map->uri();
+    foreach (['captures.index', 'captures.show'] as $name) {
+        expect(Route::getRoutes()->getByName($name)?->gatherMiddleware())->toContain('bfc.auth');
+    }
 
     expect(Route::has('endpoints.destroy'))->toBeFalse()
-        ->and($uris->filter(fn (string $uri): bool => str_starts_with($uri, 'hooks/')))->toBeEmpty();
+        ->and(Route::getRoutes()->getByName('hooks.capture')?->gatherMiddleware())->not->toContain('bfc.auth');
 });

@@ -14,7 +14,12 @@
                 <div class="mt-3 rounded-2xl border border-stone-700 bg-stone-950 p-4">
                     <code class="break-all text-sm leading-6 text-amber-200">{{ $endpoint->captureUrl() }}</code>
                 </div>
-                <p class="mt-4 text-sm leading-6 text-stone-500">The address is reserved. Public request capture arrives in the next product slice.</p>
+                <div class="mt-6 flex items-center justify-between gap-4">
+                    <p class="text-sm leading-6 text-stone-500">Requests sent to this address are stored before they are acknowledged.</p>
+                    <a href="{{ route('captures.index', $endpoint) }}" class="shrink-0 rounded-full border border-amber-300/50 px-4 py-2 text-sm font-semibold text-amber-200 hover:border-amber-200 hover:text-amber-100">
+                        View captures
+                    </a>
+                </div>
             </div>
         </div>
     </section>

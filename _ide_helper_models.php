@@ -14,11 +14,39 @@
 namespace App\Models{
 /**
  * @property int $id
+ * @property int $endpoint_id
+ * @property string $method
+ * @property string $raw_query
+ * @property array<string, list<string|null>> $headers
+ * @property string $body
+ * @property \Illuminate\Support\Carbon $received_at
+ * @property-read \App\Models\Endpoint $endpoint
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|CapturedRequest newModelQuery()
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|CapturedRequest newQuery()
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|CapturedRequest query()
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|CapturedRequest whereBody($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|CapturedRequest whereEndpointId($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|CapturedRequest whereHeaders($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|CapturedRequest whereId($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|CapturedRequest whereMethod($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|CapturedRequest whereRawQuery($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|CapturedRequest whereReceivedAt($value)
+ * @mixin \Eloquent
+ */
+	#[\AllowDynamicProperties]
+	final class IdeHelperCapturedRequest {}
+}
+
+namespace App\Models{
+/**
+ * @property int $id
  * @property int $team_id
  * @property string $name
  * @property string $public_id
  * @property \Carbon\CarbonImmutable|null $created_at
  * @property \Carbon\CarbonImmutable|null $updated_at
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\CapturedRequest> $capturedRequests
+ * @property-read int|null $captured_requests_count
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Endpoint newModelQuery()
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Endpoint newQuery()
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Endpoint query()

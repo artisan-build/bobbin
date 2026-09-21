@@ -4,8 +4,6 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
-use App\Models\Team;
-use ArtisanBuild\BuiltForCloud\User;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -46,25 +44,5 @@ final class EndpointController extends Controller
         $endpoint = $this->team($request)->endpoints()->findOrFail($endpoint);
 
         return view('endpoints.show', ['endpoint' => $endpoint]);
-    }
-
-    private function team(Request $request): Team
-    {
-        $user = $request->user();
-        if (! $user instanceof User) {
-            abort(403);
-        }
-
-        $team = Team::query()
-            ->join('team_user', 'team_user.team_id', '=', 'teams.id')
-            ->where('team_user.user_id', $user->getAuthIdentifier())
-            ->select('teams.*')
-            ->first();
-
-        if (! $team instanceof Team) {
-            abort(403);
-        }
-
-        return $team;
     }
 }
