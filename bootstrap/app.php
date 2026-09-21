@@ -4,7 +4,6 @@ use App\Console\Commands\ConfigureBuiltForCloud;
 use App\Console\Commands\Fresh;
 use App\Console\Commands\InstallFluxPro;
 use App\Console\Commands\OptimizeTailwind;
-use App\Console\Commands\PruneCapturedRequests;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -20,7 +19,6 @@ return Application::configure(basePath: dirname(__DIR__))
         Fresh::class,
         InstallFluxPro::class,
         OptimizeTailwind::class,
-        PruneCapturedRequests::class,
     ])
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->validateCsrfTokens(except: ['hooks/*']);
