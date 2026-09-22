@@ -301,14 +301,16 @@ it('lets a member list and inspect captures only within the selected endpoint', 
     $capture = capturedRequestFor($endpoint, $bodySecret, $querySecret, [
         'x-inspection-secret' => [$headerSecret, 'repeat-'.Str::random(12)],
     ]);
-    capturedRequestFor($otherEndpoint, $otherSecret, 'other-query=1');
+    $otherCapture = capturedRequestFor($otherEndpoint, $otherSecret, 'other-query=1');
     actingAsCaptureUser($this, $user);
 
     $index = $this->get(route('captures.index', $endpoint))->assertOk();
     expect(substr_count($index->getContent(), 'data-testid="captures-index"'))->toBe(1);
     $index->assertSeeText($endpoint->name)
         ->assertSeeText($querySecret)
-        ->assertDontSee($otherSecret);
+        ->assertDontSee($otherSecret)
+        ->assertDontSee('other-query=1')
+        ->assertDontSee(route('captures.show', [$endpoint, $otherCapture]));
 
     $detail = $this->get(route('captures.show', [$endpoint, $capture]))->assertOk();
     expect(substr_count($detail->getContent(), 'data-testid="capture-detail"'))->toBe(1);
