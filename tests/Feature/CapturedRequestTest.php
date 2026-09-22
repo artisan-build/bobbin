@@ -198,6 +198,28 @@ it('drops synthetic basic authentication headers before persistence', function (
         ->and($capture->redacted_header_names)->toBe(['authorization']);
 });
 
+it('drops synthetic authentication keys even when authorization stays unredacted', function (): void {
+    $endpoint = captureEndpoint(captureTeamId(), 'Unredacted authorization '.Str::random(12));
+    $username = 'plain-user-'.Str::random(12);
+    $password = 'plain-password-'.Str::random(12);
+    $wireAuthorization = 'Basic '.base64_encode($username.':'.$password);
+    $request = Request::create('/hooks/'.$endpoint->public_id, 'POST', server: [
+        'HTTP_AUTHORIZATION' => $wireAuthorization,
+    ]);
+
+    TestResponse::fromBaseResponse(resolve(Kernel::class)->handle($request))->assertNoContent();
+
+    $capture = CapturedRequest::query()->sole();
+    $storedHeaders = json_encode($capture->headers, JSON_THROW_ON_ERROR);
+
+    expect($storedHeaders)->not->toContain($username, $password, 'php-auth-user', 'php-auth-pw', 'php-auth-digest')
+        ->and(array_key_exists('php-auth-user', $capture->headers))->toBeFalse()
+        ->and(array_key_exists('php-auth-pw', $capture->headers))->toBeFalse()
+        ->and(array_key_exists('php-auth-digest', $capture->headers))->toBeFalse()
+        ->and($capture->headers['authorization'])->toBe([$wireAuthorization])
+        ->and($capture->redacted_header_names)->toBe([]);
+});
+
 it('drops the synthetic digest authentication header before persistence', function (): void {
     $endpoint = captureEndpoint(captureTeamId(), 'Digest authentication '.Str::random(12));
     $digestResponse = 'digest-response-'.Str::random(12);
