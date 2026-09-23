@@ -212,7 +212,12 @@ it('drops synthetic authentication keys even when authorization stays unredacted
     $capture = CapturedRequest::query()->sole();
     $storedHeaders = json_encode($capture->headers, JSON_THROW_ON_ERROR);
 
-    expect($storedHeaders)->not->toContain($username, $password, 'php-auth-user', 'php-auth-pw', 'php-auth-digest')
+    expect($storedHeaders)
+        ->not->toContain($username)
+        ->not->toContain($password)
+        ->not->toContain('php-auth-user')
+        ->not->toContain('php-auth-pw')
+        ->not->toContain('php-auth-digest')
         ->and(array_key_exists('php-auth-user', $capture->headers))->toBeFalse()
         ->and(array_key_exists('php-auth-pw', $capture->headers))->toBeFalse()
         ->and(array_key_exists('php-auth-digest', $capture->headers))->toBeFalse()
