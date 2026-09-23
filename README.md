@@ -8,11 +8,11 @@ Bobbin is a self-hosted webhook inbox and relay. A webhook is an HTTP request th
 an event occurs. Bobbin gives each integration a stable URL, stores the requests sent to it, and lets
 you inspect and replay them without temporarily exposing your development machine to the internet.
 
-Each Bobbin installation serves one organization and runs in that organization's Laravel Cloud account.
-It currently provides:
+Each Bobbin installation serves one organization. Its supported deployment target is that organization's
+Laravel Cloud account. It currently provides:
 
 - Named endpoints with public, hard-to-guess capture URLs.
-- Durable request methods, query strings, headers, bodies, and receipt times.
+- Stores each request's method, query string, headers, body, and time of receipt.
 - Per-endpoint retention from 1 to 365 days, with a 30-day default.
 - Optional header and body redaction before a request is stored.
 - Replay a selected capture to one configured destination with retries and visible delivery status.
@@ -113,11 +113,25 @@ repository.
 
    Leave this terminal open. It should print `Processing jobs from the [default] queue.`
 
+   For automatic retention cleanup during long-running local development, start the scheduler in another
+   terminal with `php artisan schedule:work`. Without it, run `php artisan captures:prune` manually when
+   you want to remove expired captures.
+
 8. Open <http://localhost:8000/bfc/login> and sign in with the Owner from step 3. Create an endpoint,
-   then open **Security settings** to choose retention, redaction, and one replay destination. A normal
-   destination must be an absolute public HTTP or HTTPS URL that returns a `2xx` response. To use a
-   receiver on your own machine, set `BOBBIN_ALLOW_PRIVATE_DESTINATIONS=true` in local `.env`, run
-   `php artisan config:clear`, and never deploy that setting.
+   then open **Security settings** to choose retention, redaction, and one replay destination. The URL
+   must be absolute public HTTP or HTTPS; delivery counts as succeeded only when the receiver answers
+   with a `2xx` response.
+
+   For a predictable local receiver, set `BOBBIN_ALLOW_PRIVATE_DESTINATIONS=true` in local `.env`, run
+   `php artisan config:clear`, and start the bundled receiver in another terminal:
+
+   ```bash
+   export BOBBIN_LIVE_RECEIVER_OUTPUT=/tmp/bobbin-replay.json
+   php -S 127.0.0.1:9001 tests/Live/replay-receiver.php
+   ```
+
+   Save `http://127.0.0.1:9001/receive` as the destination. The receiver returns HTTP `202`. Never deploy
+   `BOBBIN_ALLOW_PRIVATE_DESTINATIONS=true`.
 
 9. Copy the endpoint's capture URL and send it a request. The URL contains the endpoint's real public
    identifier; do not type the placeholder below literally.
@@ -129,8 +143,9 @@ repository.
    ```
 
    Bobbin returns `204 No Content` after the request is stored. Open **View captures** to inspect it.
-   From the capture page, choose **Queue replay** and watch delivery history move to `succeeded` or
-   `failed`.
+   From the capture page, choose **Queue replay**. Delivery history may show `queued` or `running` briefly,
+   then it should show `succeeded` with response status `202`. A failing destination is retried up to four
+   times and can take several minutes to become `failed`.
 
 ### Deploy To Laravel Cloud
 
@@ -164,11 +179,14 @@ These steps require interactive access to your own Laravel Cloud account.
    Create and attach a database, and enable the scheduler. The scheduler runs Bobbin's daily retention
    cleanup.
 
-4. Bind the checkout to the application if `ship` did not create `.cloud/config.json`.
+4. Bind the checkout to the application.
 
    ```bash
    cloud repo:config
    ```
+
+   This writes `.cloud/config.json`, whose organization and application identifiers tell later commands
+   which Cloud application this checkout controls. It contains identifiers, not credentials.
 
 5. Create a managed queue named `default`, then make it the environment's default queue. Choose a size
    when prompted, copy the returned queue ID, and use it in the second command.
@@ -178,13 +196,28 @@ These steps require interactive access to your own Laravel Cloud account.
    cloud managed-queue:set-default <managed-queue-id> --json --fields=id,name,isDefault
    ```
 
-   The second JSON response should contain `"isDefault": true`. Bobbin sends replay jobs through this
-   queue; do not create a manually scaled background worker.
+   The CLI first warns that `aws/aws-sdk-php` is missing and offers to install it. Answer **no**: Bobbin
+   already installs the SDK through `league/flysystem-aws-s3-v3`, and accepting would unnecessarily
+   rewrite `composer.json` and `composer.lock`.
 
-6. Never set environment variables for a database, cache, queue, or bucket that Laravel Cloud
-   provisions. Cloud injects both credentials and selectors such as `DB_CONNECTION`, `CACHE_STORE`,
-   `QUEUE_CONNECTION`, and `FILESYSTEM_DISK`. Setting your own values shadows the injected values and
-   breaks the resource.
+   The second JSON response should contain `"isDefault": true`. Bobbin sends replay jobs through this
+   queue name because its jobs do not select another queue; do not create a manually scaled background
+   worker.
+
+6. Set Bobbin's app-specific environment variables. Use the primary hostname shown by `cloud ship` for
+   `APP_URL`.
+
+   ```bash
+   cloud environment:variables <cloud-environment> --json -n --action=set --key=APP_ENV --value=production
+   cloud environment:variables <cloud-environment> --json -n --action=set --key=APP_DEBUG --value=false
+   cloud environment:variables <cloud-environment> --json -n --action=set --key=APP_NAME --value=Bobbin
+   cloud environment:variables <cloud-environment> --json -n --action=set --key=APP_URL --value="https://<your-host>"
+   ```
+
+   Let Cloud generate and preserve `APP_KEY`. Never set resource variables for a database, cache, queue,
+   or bucket that Laravel Cloud provisions. Cloud injects both credentials and selectors such as
+   `DB_CONNECTION`, `CACHE_STORE`, `QUEUE_CONNECTION`, and `FILESYSTEM_DISK`; setting your own values
+   shadows the injected values and breaks the resource.
 
 7. Deploy and wait for the deployment to finish. Replace both placeholders with the names shown by
    `cloud ship`.
@@ -200,7 +233,7 @@ These steps require interactive access to your own Laravel Cloud account.
    runs migrations; it is safe and confirms the database is ready.
 
    ```bash
-   cloud command:run <cloud-environment-id> --cmd="php artisan migrate --force" -n
+   cloud command:run <cloud-environment> --cmd="php artisan migrate --force"
    ```
 
    Each new migration should report `DONE`. An already current database reports that there is nothing to
@@ -241,6 +274,9 @@ These steps require interactive access to your own Laravel Cloud account.
 
 The browser UI is the management interface. Endpoint creation, capture inspection, security settings,
 replay, and delivery history require a signed-in Built for Cloud user.
+
+Bobbin has no member-management UI. To add another local operator, rerun local step 3 with `--force` and
+then repeat step 4 for that email. In Cloud, rerun Cloud step 9 with `--force` and then repeat step 10.
 
 The capture interface is public and accepts any HTTP method at `/hooks/{publicId}`. A successful capture
 returns `204`. Bobbin does not expose an app-specific JSON management API or MCP server in this release.
@@ -284,11 +320,8 @@ restricted to `APP_ENV=local` and must stay disabled in deployed environments.
 | Symptom | Check |
 | --- | --- |
 | The UI returns `403` after login | Run the team-attachment command from local step 4 or Cloud step 10 for that user. |
+| `create-admin` says an Owner already exists | Continue with the existing Owner, or add another Admin by rerunning the command with `--force`, then attach that user to the team. |
 | A replay stays `queued` locally | Start `php artisan queue:work`. |
 | A replay stays `queued` in Cloud | Confirm a managed queue is attached, set as default, and processing jobs. Do not set `QUEUE_CONNECTION` yourself. |
 | A destination is rejected | Use an absolute HTTP or HTTPS URL with a publicly routable host. Credentials, fragments, URL-template braces, unresolved hosts, and local or private addresses are rejected. Redirect responses are not followed and make delivery fail. |
 | A local test receiver is rejected | Prefer the live harness. For manual local-only testing, set `BOBBIN_ALLOW_PRIVATE_DESTINATIONS=true`, run `php artisan config:clear`, and never deploy that setting. |
-
-## License
-
-Bobbin is licensed under the MIT License.
