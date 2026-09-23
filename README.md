@@ -4,10 +4,12 @@
 
 # Bobbin
 
-Bobbin is a self-hosted webhook inbox and relay. It gives each integration a stable URL, stores the
-requests sent to it, and lets you inspect and replay them without a RequestBin or tunnel workflow.
+Bobbin is a self-hosted webhook inbox and relay. A webhook is an HTTP request that one app sends when
+an event occurs. Bobbin gives each integration a stable URL, stores the requests sent to it, and lets
+you inspect and replay them without temporarily exposing your development machine to the internet.
 
-Bobbin runs as a single-tenant app in your own Laravel Cloud account. It currently provides:
+Each Bobbin installation serves one organization and runs in that organization's Laravel Cloud account.
+It currently provides:
 
 - Named endpoints with public, hard-to-guess capture URLs.
 - Durable request methods, query strings, headers, bodies, and receipt times.
@@ -16,14 +18,14 @@ Bobbin runs as a single-tenant app in your own Laravel Cloud account. It current
 - Replay a selected capture to one configured destination with retries and visible delivery status.
 
 Delivery is at-least-once. A destination may process a request before Bobbin records success, so a
-receiver must tolerate duplicates. Bobbin does not yet support fan-out, payload transformations, or
-vendor-specific signature verification.
+receiver must tolerate duplicates. Bobbin does not yet support sending one capture to several
+destinations, changing captured payloads, or vendor-specific signature verification.
 
 ## The Easy Way: Scalpels
 
-[Scalpels](https://scalpels.app) is the guided way to install Bobbin and connect it to your Laravel
-Cloud account. Use it if you do not want to provision and connect the app by hand. Bobbin still runs
-inside your account, using resources you control.
+[Scalpels](https://scalpels.app) is the intended guided installation path. Bobbin is not yet listed
+publicly, so use Scalpels when it is available in your account. Bobbin still runs inside your Laravel
+Cloud account, using resources you control.
 
 ## Run It Yourself
 
@@ -39,7 +41,9 @@ repository.
 
 ### Local Setup
 
-1. Clone the repository and enter it.
+1. Get repository access, then clone the repository and enter it. Bobbin is private before launch. If
+   your GitHub account does not have access, use Scalpels when Bobbin is available there or ask Artisan
+   Build for repository access before continuing.
 
    ```bash
    git clone https://github.com/artisan-build/bobbin.git
@@ -55,20 +59,31 @@ repository.
 
    A successful run ends with all migrations marked `DONE`.
 
-3. Create the local Owner account. The command prompts for an email, name, and password.
+3. Create the local Owner account. The command prompts for an email, name, password, and password
+   confirmation. Passwords must contain at least eight characters.
 
    ```bash
    php artisan create-admin --local
    ```
 
    Keep `--local` here. Without it, this Built for Cloud command can select and change a Laravel Cloud
-   environment instead of your local database.
+   environment instead of your local database. Success prints `Admin user <email> created.`
 
-4. Attach that Owner to Bobbin's single team. Replace the example email with the address from step 3.
+4. Attach that Owner to Bobbin's team. The migrations create one team, but Owner creation does not join
+   it automatically; without this membership Bobbin returns `403`. This Tinker command is a temporary
+   workaround until Bobbin has a bootstrap command. Replace the example email with the address from step
+   3.
 
    ```bash
-   export BOBBIN_OWNER_EMAIL=you@example.com
-   php artisan tinker --execute='$userId = ArtisanBuild\BuiltForCloud\User::query()->where("email", getenv("BOBBIN_OWNER_EMAIL"))->value("id") ?? throw new RuntimeException("Owner not found."); Illuminate\Support\Facades\DB::table("team_user")->insertOrIgnore(["team_id" => Illuminate\Support\Facades\DB::table("teams")->value("id"), "user_id" => $userId]); dump("Owner attached to Bobbin team.");'
+   php artisan tinker --execute='
+   $user = ArtisanBuild\BuiltForCloud\User::query()->where("email", "you@example.com")->firstOrFail();
+   $team = App\Models\Team::query()->firstOrFail();
+   Illuminate\Support\Facades\DB::table("team_user")->insertOrIgnore([
+       "team_id" => $team->id,
+       "user_id" => $user->id,
+   ]);
+   dump("Owner attached to Bobbin team.");
+   '
    ```
 
    You should see `Owner attached to Bobbin team.`
@@ -96,8 +111,13 @@ repository.
    php artisan queue:work
    ```
 
+   Leave this terminal open. It should print `Processing jobs from the [default] queue.`
+
 8. Open <http://localhost:8000/bfc/login> and sign in with the Owner from step 3. Create an endpoint,
-   then open **Security settings** to choose retention, redaction, and one replay destination.
+   then open **Security settings** to choose retention, redaction, and one replay destination. A normal
+   destination must be an absolute public HTTP or HTTPS URL that returns a `2xx` response. To use a
+   receiver on your own machine, set `BOBBIN_ALLOW_PRIVATE_DESTINATIONS=true` in local `.env`, run
+   `php artisan config:clear`, and never deploy that setting.
 
 9. Copy the endpoint's capture URL and send it a request. The URL contains the endpoint's real public
    identifier; do not type the placeholder below literally.
@@ -114,10 +134,28 @@ repository.
 
 ### Deploy To Laravel Cloud
 
-These steps require interactive access to your own Laravel Cloud account. They have not been executed
-for this repository.
+These steps require interactive access to your own Laravel Cloud account.
 
-1. Run the guided first deployment from the repository.
+1. Install the Laravel Cloud CLI and authenticate it in your browser.
+
+   ```bash
+   composer global require laravel/cloud-cli
+   cloud auth
+   ```
+
+   After authentication, the CLI returns to your terminal.
+
+2. Confirm this checkout has a Git remote hosted by a source provider connected to your Laravel Cloud
+   account.
+
+   ```bash
+   git remote -v
+   ```
+
+   You should see a fetch and push URL for `origin`. Push the repository to a supported source provider
+   before continuing if no remote is listed.
+
+3. Run the guided first deployment from the repository.
 
    ```bash
    cloud ship
@@ -126,43 +164,78 @@ for this repository.
    Create and attach a database, and enable the scheduler. The scheduler runs Bobbin's daily retention
    cleanup.
 
-2. Bind the checkout to the application if `ship` did not create `.cloud/config.json`.
+4. Bind the checkout to the application if `ship` did not create `.cloud/config.json`.
 
    ```bash
    cloud repo:config
    ```
 
-3. In Laravel Cloud, add a managed queue and make it the environment's default queue. Bobbin sends
-   replay jobs through the queue; do not create a manually scaled background worker.
+5. Create a managed queue named `default`, then make it the environment's default queue. Choose a size
+   when prompted, copy the returned queue ID, and use it in the second command.
 
-4. Never set environment variables for a database, cache, queue, or bucket that Laravel Cloud
+   ```bash
+   cloud managed-queue:create <cloud-environment> --name=default --json --fields=id,name
+   cloud managed-queue:set-default <managed-queue-id> --json --fields=id,name,isDefault
+   ```
+
+   The second JSON response should contain `"isDefault": true`. Bobbin sends replay jobs through this
+   queue; do not create a manually scaled background worker.
+
+6. Never set environment variables for a database, cache, queue, or bucket that Laravel Cloud
    provisions. Cloud injects both credentials and selectors such as `DB_CONNECTION`, `CACHE_STORE`,
    `QUEUE_CONNECTION`, and `FILESYSTEM_DISK`. Setting your own values shadows the injected values and
    breaks the resource.
 
-5. Deploy and wait for the deployment to finish.
+7. Deploy and wait for the deployment to finish. Replace both placeholders with the names shown by
+   `cloud ship`.
 
    ```bash
-   cloud deploy -n --open
-   cloud deploy:monitor -n
+   cloud deploy <cloud-application> <cloud-environment> -n --open
    ```
 
-6. Create the first Owner in the deployed environment. This command intentionally targets Cloud, so
+   Without `--no-wait`, this command returns only after the deployment finishes. A successful deployment
+   opens the app in your browser.
+
+8. Run the database migrations in the deployed environment. Do this even if the deployment command also
+   runs migrations; it is safe and confirms the database is ready.
+
+   ```bash
+   cloud command:run <cloud-environment-id> --cmd="php artisan migrate --force" -n
+   ```
+
+   Each new migration should report `DONE`. An already current database reports that there is nothing to
+   migrate.
+
+9. Create the first Owner in the deployed environment. This command intentionally targets Cloud, so
    replace the placeholder with the environment name shown by the CLI and do not add `--local`.
 
    ```bash
    php artisan create-admin --environment=<cloud-environment>
    ```
 
-7. Attach the deployed Owner to the Bobbin team. Replace both placeholders.
+   Success prints `Admin user <email> created.`
 
-   ```bash
-   cloud tinker <cloud-environment> --code='$userId = ArtisanBuild\BuiltForCloud\User::query()->where("email", "you@example.com")->value("id") ?? throw new RuntimeException("Owner not found."); Illuminate\Support\Facades\DB::table("team_user")->insertOrIgnore(["team_id" => Illuminate\Support\Facades\DB::table("teams")->value("id"), "user_id" => $userId]);'
-   ```
+10. Attach the deployed Owner to the Bobbin team. This is the same temporary bootstrap workaround as
+    local step 4. Replace both placeholders.
 
-8. Request `https://<your-host>/up` and expect HTTP `200`. Then sign in at
-   `https://<your-host>/bfc/login`, create an endpoint, and repeat the capture example with its HTTPS
-   URL. A replay should leave `queued` once the managed queue processes it.
+    ```bash
+    cloud tinker <cloud-environment> --code='
+    $user = ArtisanBuild\BuiltForCloud\User::query()->where("email", "you@example.com")->firstOrFail();
+    $team = App\Models\Team::query()->firstOrFail();
+    Illuminate\Support\Facades\DB::table("team_user")->insertOrIgnore([
+        "team_id" => $team->id,
+        "user_id" => $user->id,
+    ]);
+    dump("Owner attached to Bobbin team.");
+    '
+    ```
+
+    You should see `Owner attached to Bobbin team.`
+
+11. Copy the primary hostname opened by `cloud deploy` or shown in the Laravel Cloud dashboard. Request
+    `https://<your-host>/up` and expect HTTP `200`. Then sign in at
+    `https://<your-host>/bfc/login`, create an endpoint, and repeat the capture example with its HTTPS
+    URL. A replay should move from `queued` to `succeeded` after the managed queue processes it.
 
 ## Interfaces
 
@@ -178,7 +251,7 @@ Local defaults come from `.env.example` and the files under `config/`.
 
 | Variable | Local default | Purpose |
 | --- | --- | --- |
-| `APP_URL` | `http://localhost` | Base URL used when Bobbin displays capture URLs. |
+| `APP_URL` | `http://localhost` | Fallback base URL used outside a web request, such as from a console command. |
 | `DB_CONNECTION` | `sqlite` | Stores users, endpoints, captures, deliveries, sessions, cache, and local queue jobs. |
 | `SESSION_DRIVER` | `database` | Stores local browser sessions. |
 | `CACHE_STORE` | `database` | Provides cache locks, including replay overlap protection. |
@@ -210,10 +283,10 @@ restricted to `APP_ENV=local` and must stay disabled in deployed environments.
 
 | Symptom | Check |
 | --- | --- |
-| The UI returns `403` after login | Run the team-attachment command from local step 4 or Cloud step 7 for that user. |
+| The UI returns `403` after login | Run the team-attachment command from local step 4 or Cloud step 10 for that user. |
 | A replay stays `queued` locally | Start `php artisan queue:work`. |
 | A replay stays `queued` in Cloud | Confirm a managed queue is attached, set as default, and processing jobs. Do not set `QUEUE_CONNECTION` yourself. |
-| A destination is rejected | Use an absolute HTTP or HTTPS URL with a publicly routable host. Credentials, fragments, URL-template braces, unresolved hosts, and local or private addresses are rejected. |
+| A destination is rejected | Use an absolute HTTP or HTTPS URL with a publicly routable host. Credentials, fragments, URL-template braces, unresolved hosts, and local or private addresses are rejected. Redirect responses are not followed and make delivery fail. |
 | A local test receiver is rejected | Prefer the live harness. For manual local-only testing, set `BOBBIN_ALLOW_PRIVATE_DESTINATIONS=true`, run `php artisan config:clear`, and never deploy that setting. |
 
 ## License
