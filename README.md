@@ -289,7 +289,7 @@ Local defaults come from `.env.example` and the files under `config/`.
 | --- | --- | --- |
 | `APP_URL` | `http://localhost` | Fallback base URL used outside a web request, such as from a console command. |
 | `DB_CONNECTION` | `sqlite` | Stores users, endpoints, captures, deliveries, sessions, cache, and local queue jobs. |
-| `SESSION_DRIVER` | `database` | Stores local browser sessions. |
+| `SESSION_DRIVER` | `cookie` | Stores local browser sessions in encrypted cookies. |
 | `CACHE_STORE` | `database` | Provides cache locks, including replay overlap protection. |
 | `QUEUE_CONNECTION` | `database` | Queues replay deliveries locally. |
 | `BOBBIN_ALLOW_PRIVATE_DESTINATIONS` | `false` | Allows local or private replay targets only when this is `true` and `APP_ENV=local`. Never enable it in a deployed environment. |
