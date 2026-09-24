@@ -57,6 +57,7 @@ it('lets an authenticated operator create list and view a named endpoint', funct
         ->assertRedirect();
 
     $endpoint = Endpoint::query()->where('name', $name)->sole();
+    expect($endpoint->captureUrl())->toBe(route('hooks.capture', ['publicId' => $endpoint->public_id]));
     expect($endpoint->team_id)->toBe(endpointTeamId());
     $detail = $this->get(route('endpoints.show', $endpoint))->assertOk();
     expect(substr_count($detail->getContent(), 'data-testid="endpoint-detail"'))->toBe(1);
