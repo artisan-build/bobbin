@@ -15,8 +15,8 @@ it('owns only the D-UI-3 application configuration overlay', function (): void {
             'name' => 'Bobbin',
             'slug' => 'bobbin',
             'description' => 'Catch third-party webhooks, inspect exactly what arrived, and replay them onward.',
-            'icon' => 'https://scalpels.app/products/bobbin/icon.svg',
-            'product_url' => 'https://scalpels.app/products/bobbin',
+            'icon' => 'https://scalpels.app/img/products/transparent/bobbin.svg',
+            'product_url' => 'https://scalpels.app',
         ],
         'credentials' => [
             'guard' => 'bfc',
@@ -41,7 +41,7 @@ it('merges package defaults and auto-discovers the released provider', function 
     $constraint = data_get($composer, 'require.artisan-build/built-for-cloud');
     $version = InstalledVersions::getVersion('artisan-build/built-for-cloud');
 
-    expect($constraint)->toBe('^0.15')
+    expect($constraint)->toBe('^0.17')
         ->and($version)->toBeString();
     assert(is_string($constraint));
     assert(is_string($version));
@@ -50,8 +50,8 @@ it('merges package defaults and auto-discovers the released provider', function 
         'name' => 'Bobbin',
         'slug' => 'bobbin',
         'description' => 'Catch third-party webhooks, inspect exactly what arrived, and replay them onward.',
-        'icon' => 'https://scalpels.app/products/bobbin/icon.svg',
-        'product_url' => 'https://scalpels.app/products/bobbin',
+        'icon' => 'https://scalpels.app/img/products/transparent/bobbin.svg',
+        'product_url' => 'https://scalpels.app',
     ])->and(config('built-for-cloud.ui'))->toBe([
         'landing_page' => false,
         'member_management' => false,
@@ -65,8 +65,8 @@ it('merges package defaults and auto-discovers the released provider', function 
         ->and(config('auth.defaults.guard'))->toBe('web')
         ->and(config('auth.providers.users.model'))->toBe(User::class)
         ->and(app()->getLoadedProviders())->toHaveKey(BuiltForCloudServiceProvider::class, true)
-        ->and(version_compare($version, '0.15.0', '>='))->toBeTrue()
-        ->and(version_compare($version, '0.16.0', '<'))->toBeTrue();
+        ->and(version_compare($version, '0.17.0', '>='))->toBeTrue()
+        ->and(version_compare($version, '0.18.0', '<'))->toBeTrue();
 });
 
 it('runs fresh package-owned migrations on sqlite', function (): void {
