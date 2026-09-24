@@ -157,7 +157,7 @@ it('redacts every selected header value case-insensitively and preserves sentine
     $selectedSecond = 'selected-second-'.Str::random(12);
     $sentinelFirst = CapturedRequest::REDACTION_MARKER;
     $sentinelSecond = 'sentinel-second-'.Str::random(12);
-    $endpoint->update(['redacted_header_names' => ['x-secret-token']]);
+    $endpoint->update(['redacted_header_names' => ['x-secret-token', 'x-absent-token']]);
 
     sendCapture($endpoint, 'POST', headers: [
         'X-SeCrEt-ToKeN' => [$selectedFirst, $selectedSecond],
@@ -173,6 +173,7 @@ it('redacts every selected header value case-insensitively and preserves sentine
             CapturedRequest::REDACTION_MARKER,
         ])
         ->and($capture->redacted_header_names)->toBe(['x-secret-token'])
+        ->and(in_array('x-absent-token', $capture->redacted_header_names, true))->toBeFalse()
         ->and($capture->headers['x-unselected-sentinel'])->toBe([$sentinelFirst, $sentinelSecond]);
 });
 
