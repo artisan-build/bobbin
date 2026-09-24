@@ -84,6 +84,6 @@ Fleet bindings come from `~/Herd/brain/agents.json`, resolved at spawn time via
 ## Stack Notes
 
 - Laravel 13 on `laravel-nodeless`: no Node, no npm, no Vite, no frontend build step. Do not add one.
-- `artisan-build/built-for-cloud` is pinned at `^0.15`; the package moves fast, and raising the floor
+- `artisan-build/built-for-cloud` is pinned at `^0.17`; the package moves fast, and raising the floor
   is preferred over shimming around it.
 - Two traps this fleet has already paid for: test the SEAM (capture tested plus replay tested does not prove a captured request replays correctly - one end-to-end round trip is mandatory), and treat retention/redaction as security-material (a redaction test that still passes with the redaction deleted is the assurance-outruns-enforcement pattern, so include a positive control).
