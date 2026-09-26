@@ -33,7 +33,6 @@ PHP];
 
 it('pins the Bobbin root surface while retaining the thin auth host', function (): void {
     $expected = array_fill_keys(ReferenceConsumerInventory::FAMILIES, []);
-    $expected['starter_root_collision'] = ['routes/web.php'];
 
     expect(ReferenceConsumerInventory::inspect(dirname(__DIR__, 2)))->toBe($expected);
 });

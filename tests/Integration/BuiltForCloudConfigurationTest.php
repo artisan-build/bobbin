@@ -18,6 +18,7 @@ it('owns only the D-UI-3 application configuration overlay', function (): void {
             'icon' => 'https://scalpels.app/img/products/transparent/bobbin.png',
             'product_url' => 'https://scalpels.app/products/bobbin',
         ],
+        'dashboard' => App\Http\Controllers\DashboardController::class,
         'credentials' => [
             'guard' => 'bfc',
             'declaration' => null,
@@ -66,7 +67,7 @@ it('merges package defaults and auto-discovers the released provider', function 
         ->and(config('auth.providers.users.model'))->toBe(User::class)
         ->and(app()->getLoadedProviders())->toHaveKey(BuiltForCloudServiceProvider::class, true)
         ->and(version_compare($version, '0.17.0', '>='))->toBeTrue()
-        ->and(version_compare($version, '0.18.0', '<'))->toBeTrue();
+        ->and(version_compare($version, '0.19.0', '<'))->toBeTrue();
 });
 
 it('runs fresh package-owned migrations on sqlite', function (): void {
