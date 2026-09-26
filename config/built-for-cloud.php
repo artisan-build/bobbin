@@ -7,8 +7,8 @@ return [
         'name' => 'Bobbin',
         'slug' => 'bobbin',
         'description' => 'Catch third-party webhooks, inspect exactly what arrived, and replay them onward.',
-        'icon' => 'https://scalpels.app/img/products/transparent/bobbin.svg',
-        'product_url' => 'https://scalpels.app',
+        'icon' => 'https://scalpels.app/img/products/transparent/bobbin.png',
+        'product_url' => 'https://scalpels.app/products/bobbin',
     ],
     'credentials' => [
         'guard' => 'bfc',
