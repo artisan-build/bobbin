@@ -10,6 +10,6 @@ final class DashboardController
 {
     public function __invoke(): RedirectResponse
     {
-        return redirect()->route('endpoints.index');
+        return to_route('endpoints.index');
     }
 }
