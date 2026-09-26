@@ -13,7 +13,6 @@ use Illuminate\Support\Facades\Route;
 Route::any('/hooks/{publicId}', CaptureController::class)->name('hooks.capture');
 
 Route::middleware('bfc.auth')->group(function (): void {
-    Route::redirect('/', '/endpoints');
     Route::resource('endpoints', EndpointController::class)
         ->only(['index', 'create', 'store', 'show']);
     Route::get('/endpoints/{endpoint}/settings', [EndpointSettingsController::class, 'edit'])
