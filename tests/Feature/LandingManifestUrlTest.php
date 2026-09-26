@@ -20,15 +20,10 @@ use ArtisanBuild\BuiltForCloud\LandingManifest;
 | of the scalpels.app URLs below, each confirmed with `curl` to answer HTTP 200.
 | Add a URL here only after you have checked it the same way, and record the date.
 |
-| Verified 2026-09-23 with `curl -o /dev/null -w '%{http_code}'`:
+| Verified 2026-09-26 with `curl -o /dev/null -w '%{http_code}'`:
 |
-|   200  https://scalpels.app
-|   200  https://scalpels.app/img/products/transparent/bobbin.svg   (image/svg+xml)
 |   200  https://scalpels.app/img/products/transparent/bobbin.png   (image/png)
-|
-| Known-dead shapes, for the record: `https://scalpels.app/products/bobbin` and
-| `https://scalpels.app/products/bobbin/icon.svg` both answer 404. The Bobbin
-| product page has not launched; swap `product_url` over once it does.
+|   200  https://scalpels.app/products/bobbin                       (text/html)
 |
 */
 
@@ -38,9 +33,8 @@ use ArtisanBuild\BuiltForCloud\LandingManifest;
  * @var list<string>
  */
 const VERIFIED_LIVE_MANIFEST_URLS = [
-    'https://scalpels.app',
     'https://scalpels.app/img/products/transparent/bobbin.png',
-    'https://scalpels.app/img/products/transparent/bobbin.svg',
+    'https://scalpels.app/products/bobbin',
 ];
 
 /**
