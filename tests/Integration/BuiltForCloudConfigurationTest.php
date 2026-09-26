@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\DashboardController;
 use ArtisanBuild\BuiltForCloud\BuiltForCloudServiceProvider;
 use ArtisanBuild\BuiltForCloud\User;
 use Composer\InstalledVersions;
@@ -18,7 +19,7 @@ it('owns only the D-UI-3 application configuration overlay', function (): void {
             'icon' => 'https://scalpels.app/img/products/transparent/bobbin.png',
             'product_url' => 'https://scalpels.app/products/bobbin',
         ],
-        'dashboard' => App\Http\Controllers\DashboardController::class,
+        'dashboard' => DashboardController::class,
         'credentials' => [
             'guard' => 'bfc',
             'declaration' => null,
