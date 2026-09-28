@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+use App\Http\Controllers\DashboardController;
+
 return [
     'manifest' => [
         'name' => 'Bobbin',
@@ -10,6 +12,7 @@ return [
         'icon' => 'https://scalpels.app/img/products/transparent/bobbin.png',
         'product_url' => 'https://scalpels.app/products/bobbin',
     ],
+    'dashboard' => DashboardController::class,
     'credentials' => [
         'guard' => 'bfc',
         'declaration' => null,
