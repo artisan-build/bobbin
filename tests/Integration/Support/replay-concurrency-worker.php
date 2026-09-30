@@ -6,6 +6,7 @@ use App\Models\McpReplayRequest;
 use App\Services\DispatchCapturedRequest;
 use App\Services\ReplayIdempotencyConflict;
 use App\Services\ReplayOutcomeUnknown;
+use App\Services\SettleReplayRequest;
 use Illuminate\Contracts\Bus\Dispatcher;
 use Illuminate\Contracts\Console\Kernel;
 use Illuminate\Support\Facades\DB;
@@ -79,7 +80,7 @@ while (! is_file($gatePath)) {
 $startedAt = microtime(true);
 
 try {
-    $result = (new DispatchCapturedRequest($jobs))->dispatchIdempotently(
+    $result = (new DispatchCapturedRequest($jobs, new SettleReplayRequest))->dispatchIdempotently(
         teamId: (int) $request['team_id'],
         endpointId: (int) $request['endpoint_id'],
         captureId: (int) $request['capture_id'],

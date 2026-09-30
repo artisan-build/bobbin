@@ -18,7 +18,10 @@ use UnexpectedValueException;
 
 final readonly class DispatchCapturedRequest
 {
-    public function __construct(private Dispatcher $jobs) {}
+    public function __construct(
+        private Dispatcher $jobs,
+        private SettleReplayRequest $settlement,
+    ) {}
 
     public function dispatch(CapturedRequest $capturedRequest): Delivery
     {
@@ -161,41 +164,32 @@ final readonly class DispatchCapturedRequest
         }
 
         try {
-            $this->jobs->dispatch(new DeliverCapturedRequest($result->deliveryId));
+            $this->jobs->dispatch(new DeliverCapturedRequest($result->deliveryId, $result->replayRequestId));
         } catch (Throwable $exception) {
-            $recorded = McpReplayRequest::query()
-                ->whereKey($result->replayRequestId)
-                ->where('outcome', McpReplayRequest::OUTCOME_IN_PROGRESS)
-                ->update(['outcome' => McpReplayRequest::OUTCOME_UNKNOWN]);
+            $outcome = $this->settlement->unknown($result->replayRequestId);
 
-            if ($recorded !== 1) {
-                throw $exception;
+            if ($outcome === McpReplayRequest::OUTCOME_ACCEPTED) {
+                return $this->withOutcome($result, McpReplayRequest::OUTCOME_ACCEPTED);
             }
 
             throw new ReplayOutcomeUnknown($result->deliveryId, $exception);
         }
 
         try {
-            $accepted = McpReplayRequest::query()
-                ->whereKey($result->replayRequestId)
-                ->where('outcome', McpReplayRequest::OUTCOME_IN_PROGRESS)
-                ->update(['outcome' => McpReplayRequest::OUTCOME_ACCEPTED]);
-        } catch (Throwable $exception) {
-            $persistedOutcome = McpReplayRequest::query()
-                ->whereKey($result->replayRequestId)
-                ->value('outcome');
-
-            if ($persistedOutcome !== McpReplayRequest::OUTCOME_ACCEPTED) {
-                throw $exception;
-            }
-
-            $accepted = 1;
+            $outcome = $this->settlement->accepted($result->replayRequestId);
+        } catch (Throwable) {
+            return $result;
         }
 
-        if ($accepted !== 1) {
-            throw new UnexpectedValueException('The replay acceptance state could not be persisted.');
+        if ($outcome === McpReplayRequest::OUTCOME_UNKNOWN) {
+            throw new ReplayOutcomeUnknown($result->deliveryId);
         }
 
+        return $this->withOutcome($result, $outcome);
+    }
+
+    private function withOutcome(ReplayDispatchResult $result, string $outcome): ReplayDispatchResult
+    {
         return new ReplayDispatchResult(
             $result->replayRequestId,
             $result->deliveryId,
@@ -203,7 +197,7 @@ final readonly class DispatchCapturedRequest
             $result->destinationId,
             $result->status,
             false,
-            McpReplayRequest::OUTCOME_ACCEPTED,
+            $outcome,
         );
     }
 }

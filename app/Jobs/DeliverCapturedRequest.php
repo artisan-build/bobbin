@@ -7,6 +7,7 @@ namespace App\Jobs;
 use App\Models\CapturedRequest;
 use App\Models\Delivery;
 use App\Services\DestinationUrlPolicy;
+use App\Services\SettleReplayRequest;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Http\Client\ConnectionException;
@@ -30,7 +31,10 @@ final class DeliverCapturedRequest implements ShouldQueue
 
     public int $timeout = 30;
 
-    public function __construct(public int $deliveryId) {}
+    public function __construct(
+        public int $deliveryId,
+        public ?int $replayRequestId = null,
+    ) {}
 
     /** @return list<WithoutOverlapping> */
     public function middleware(): array
@@ -45,6 +49,10 @@ final class DeliverCapturedRequest implements ShouldQueue
 
     public function handle(): void
     {
+        if ($this->replayRequestId !== null) {
+            resolve(SettleReplayRequest::class)->accepted($this->replayRequestId);
+        }
+
         $shouldSend = DB::transaction(function (): bool {
             $delivery = Delivery::query()->lockForUpdate()->findOrFail($this->deliveryId);
 
@@ -132,6 +140,10 @@ final class DeliverCapturedRequest implements ShouldQueue
 
     public function failed(?Throwable $exception): void
     {
+        if ($this->replayRequestId !== null) {
+            resolve(SettleReplayRequest::class)->unknown($this->replayRequestId);
+        }
+
         Delivery::query()
             ->whereKey($this->deliveryId)
             ->whereNotIn('status', [Delivery::STATUS_SUCCEEDED, Delivery::STATUS_FAILED])
