@@ -148,7 +148,7 @@ namespace App\Models{
  * @property int|null $delivery_capture_id
  * @property int|null $delivery_destination_id
  * @property string|null $delivery_status
- * @property bool $dispatch_accepted
+ * @property string $outcome
  * @method static \Illuminate\Database\Eloquent\Builder<static>|McpReplayRequest newModelQuery()
  * @method static \Illuminate\Database\Eloquent\Builder<static>|McpReplayRequest newQuery()
  * @method static \Illuminate\Database\Eloquent\Builder<static>|McpReplayRequest query()

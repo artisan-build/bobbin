@@ -78,8 +78,7 @@ function concurrencyWorker(
     int $timeout = 10_000,
     ?string $dispatchGate = null,
     bool $dispatchMustFail = false,
-): Process
-{
+): Process {
     return new Process([
         PHP_BINARY,
         __DIR__.'/Support/replay-concurrency-worker.php',
