@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Models\McpReplayRequest;
 use App\Services\DispatchCapturedRequest;
 use App\Services\ReplayIdempotencyConflict;
 use App\Services\ReplayOutcomeUnknown;
@@ -35,6 +36,8 @@ $gatePath = $argv[2];
 $dispatchLog = $argv[3];
 $applicationName = $argv[4];
 $statementTimeout = (int) $argv[5];
+$dispatchGate = $argv[6] !== '' ? $argv[6] : null;
+$dispatchMustFail = $argv[7] === 'fail';
 
 $app = require dirname(__DIR__, 3).'/bootstrap/app.php';
 $app->make(Kernel::class)->bootstrap();
@@ -43,11 +46,19 @@ DB::statement("select set_config('statement_timeout', ?, false)", [(string) $sta
 
 $jobs = Mockery::mock(Dispatcher::class);
 $jobs->shouldReceive('dispatch')->zeroOrMoreTimes()->andReturnUsing(
-    static function (object $job) use ($dispatchLog): object {
+    static function (object $job) use ($dispatchGate, $dispatchLog, $dispatchMustFail): object {
         file_put_contents($dispatchLog, json_encode([
             'pid' => getmypid(),
             'delivery_id' => $job->deliveryId,
         ], JSON_THROW_ON_ERROR).PHP_EOL, FILE_APPEND | LOCK_EX);
+
+        if ($dispatchMustFail) {
+            throw new RuntimeException('Deliberately unrecoverable dispatch result.');
+        }
+
+        while ($dispatchGate !== null && ! is_file($dispatchGate)) {
+            Sleep::usleep(1_000);
+        }
 
         return $job;
     },
@@ -77,7 +88,11 @@ try {
         idempotencyKey: (string) $request['idempotency_key'],
     );
     $payload = [
-        'outcome' => $result->duplicate ? 'already_accepted' : 'accepted',
+        'outcome' => match ($result->outcome) {
+            McpReplayRequest::OUTCOME_ACCEPTED => $result->duplicate ? 'already_accepted' : 'accepted',
+            McpReplayRequest::OUTCOME_IN_PROGRESS => 'in_progress',
+            default => throw new RuntimeException('Unexpected replay result.'),
+        },
         'delivery_id' => $result->deliveryId,
         'started_at' => $startedAt,
         'finished_at' => microtime(true),
@@ -91,7 +106,8 @@ try {
     ];
 } catch (ReplayIdempotencyConflict) {
     $payload = [
-        'outcome' => 'idempotency_conflict',
+        'outcome' => 'refused',
+        'reason' => 'idempotency_conflict',
         'started_at' => $startedAt,
         'finished_at' => microtime(true),
     ];

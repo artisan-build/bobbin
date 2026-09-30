@@ -13,6 +13,6 @@ final readonly class ReplayDispatchResult
         public int $destinationId,
         public string $status,
         public bool $duplicate,
-        public bool $dispatchAccepted,
+        public string $outcome,
     ) {}
 }

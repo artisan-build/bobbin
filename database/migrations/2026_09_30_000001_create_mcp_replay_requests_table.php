@@ -20,7 +20,7 @@ return new class extends Migration
             $table->unsignedBigInteger('delivery_capture_id')->nullable();
             $table->unsignedBigInteger('delivery_destination_id')->nullable();
             $table->string('delivery_status', 16)->nullable();
-            $table->boolean('dispatch_accepted')->default(false);
+            $table->string('outcome', 16)->default('in_progress');
             $table->timestamps();
             $table->unique(['team_id', 'actor_identifier', 'idempotency_key'], 'mcp_replay_scope_key_unique');
         });

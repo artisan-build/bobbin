@@ -279,7 +279,7 @@ it('rejects malformed closed arguments lists enums cursors and limits', function
         ]);
 });
 
-it('atomically suppresses replay duplicates conflicts on changed requests and reports uncertain dispatch', function (): void {
+it('atomically suppresses replay duplicates and keeps unrecoverable dispatch terminally unknown', function (): void {
     $token = productMcpToken();
     $teamId = (int) DB::table('teams')->value('id');
     $endpoint = productMcpEndpoint($teamId);
@@ -314,18 +314,25 @@ it('atomically suppresses replay duplicates conflicts on changed requests and re
         ->and($duplicateAfterDeactivation['delivery']['id'])->toBe($accepted['delivery']['id']);
     $destination->update(['is_active' => true]);
 
-    productMcpCall('/mcp/write', 'replay_capture', [
+    $changedRequest = productMcpCall('/mcp/write', 'replay_capture', [
         ...$arguments, 'capture_id' => $otherCapture->id,
     ], $token)->assertOk()->assertJsonPath('result.isError', true);
-    expect(Delivery::query()->count())->toBe(1);
+    expect(productMcpContent($changedRequest))->toBe([
+        'outcome' => 'refused',
+        'reason' => 'idempotency_conflict',
+    ])->and(Delivery::query()->count())->toBe(1);
 
     $foreignTeamId = DB::table('teams')->insertGetId([
         'name' => 'Foreign replay team', 'created_at' => now(), 'updated_at' => now(),
     ]);
     $foreignEndpoint = productMcpEndpoint($foreignTeamId);
-    productMcpCall('/mcp/write', 'replay_capture', [
+    $foreign = productMcpCall('/mcp/write', 'replay_capture', [
         ...$arguments, 'endpoint_id' => $foreignEndpoint->id, 'idempotency_key' => 'foreign',
     ], $token)->assertOk()->assertJsonPath('result.isError', true);
+    expect(productMcpContent($foreign))->toBe([
+        'outcome' => 'refused',
+        'reason' => 'not_found',
+    ]);
 
     $jobs = Mockery::mock(Dispatcher::class);
     $jobs->shouldReceive('dispatch')->once()->andThrow(new RuntimeException('uncertain queue transport'));
@@ -346,7 +353,64 @@ it('atomically suppresses replay duplicates conflicts on changed requests and re
         ...$arguments, 'idempotency_key' => 'uncertain',
     ], $token)->assertOk()->assertJsonPath('result.isError', true);
     expect(productMcpContent($retry))->toBe($unknownContent)
-        ->and(McpReplayRequest::query()->where('idempotency_key', 'uncertain')->firstOrFail()->dispatch_accepted)->toBeFalse();
+        ->and(McpReplayRequest::query()->where('idempotency_key', 'uncertain')->firstOrFail()->outcome)
+        ->toBe(McpReplayRequest::OUTCOME_UNKNOWN);
+
+    $laterRetry = productMcpCall('/mcp/write', 'replay_capture', [
+        ...$arguments, 'idempotency_key' => 'uncertain',
+    ], $token)->assertOk()->assertJsonPath('result.isError', true);
+    expect(productMcpContent($laterRetry))->toBe($unknownContent);
+});
+
+it('reports a durable in-progress replay without redispatching it', function (): void {
+    $token = productMcpToken();
+    $credentialId = Credential::query()->latest('id')->firstOrFail()->id;
+    $teamId = (int) DB::table('teams')->value('id');
+    $endpoint = productMcpEndpoint($teamId);
+    $capture = $endpoint->capturedRequests()->create([
+        'method' => 'POST', 'raw_query' => '', 'headers' => [], 'body' => 'payload', 'received_at' => now(),
+    ]);
+    $destination = $endpoint->destinations()->create([
+        'url' => 'https://receiver.example.test/hook', 'is_active' => true,
+    ]);
+    $delivery = $destination->deliveries()->create(['captured_request_id' => $capture->id]);
+    $arguments = [
+        'endpoint_id' => $endpoint->id,
+        'capture_id' => $capture->id,
+        'destination_id' => $destination->id,
+        'idempotency_key' => 'still-dispatching',
+    ];
+    McpReplayRequest::query()->create([
+        'team_id' => $teamId,
+        'actor_identifier' => 'credential:'.$credentialId,
+        'idempotency_key' => $arguments['idempotency_key'],
+        'request_hash' => hash('sha256', json_encode([
+            'team_id' => $teamId,
+            'endpoint_id' => $endpoint->id,
+            'capture_id' => $capture->id,
+            'destination_id' => $destination->id,
+        ], JSON_THROW_ON_ERROR)),
+        'delivery_id' => $delivery->id,
+        'delivery_capture_id' => $capture->id,
+        'delivery_destination_id' => $destination->id,
+        'delivery_status' => $delivery->status,
+        'outcome' => McpReplayRequest::OUTCOME_IN_PROGRESS,
+    ]);
+
+    $response = productMcpCall('/mcp/write', 'replay_capture', $arguments, $token)
+        ->assertOk()
+        ->assertJsonPath('result.isError', false);
+
+    expect(productMcpContent($response))->toBe([
+        'outcome' => 'in_progress',
+        'delivery' => [
+            'id' => $delivery->id,
+            'capture_id' => $capture->id,
+            'destination_id' => $destination->id,
+            'status' => 'queued',
+        ],
+    ]);
+    Queue::assertNothingPushed();
 });
 
 it('keeps replay receipts and consumed keys after capture retention pruning', function (): void {
@@ -377,7 +441,8 @@ it('keeps replay receipts and consumed keys after capture retention pruning', fu
     expect(Artisan::call('captures:prune'))->toBe(0)
         ->and(CapturedRequest::query()->whereKey($capture->id)->exists())->toBeFalse()
         ->and(Delivery::query()->whereKey($accepted['delivery']['id'])->exists())->toBeFalse()
-        ->and(McpReplayRequest::query()->where('idempotency_key', 'retained-receipt')->exists())->toBeTrue();
+        ->and(McpReplayRequest::query()->where('idempotency_key', 'retained-receipt')->value('outcome'))
+        ->toBe(McpReplayRequest::OUTCOME_ACCEPTED);
 
     $retry = productMcpContent(productMcpCall('/mcp/write', 'replay_capture', $arguments, $token));
     expect($retry['outcome'])->toBe('already_accepted')
@@ -386,7 +451,10 @@ it('keeps replay receipts and consumed keys after capture retention pruning', fu
     $conflict = productMcpCall('/mcp/write', 'replay_capture', [
         ...$arguments, 'capture_id' => $otherCapture->id,
     ], $token)->assertOk()->assertJsonPath('result.isError', true);
-    expect($conflict->getContent())->toContain('idempotency_conflict')
+    expect(productMcpContent($conflict))->toBe([
+        'outcome' => 'refused',
+        'reason' => 'idempotency_conflict',
+    ])
         ->and(json_encode(McpReplayRequest::query()->firstOrFail()->toArray(), JSON_THROW_ON_ERROR))
         ->not->toContain('must-not-enter-ledger');
     Queue::assertPushedTimes(DeliverCapturedRequest::class, 1);

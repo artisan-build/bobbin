@@ -6,6 +6,7 @@ namespace App\Mcp\Tools;
 
 use App\Mcp\BobbinMcpScope;
 use App\Mcp\BobbinTool;
+use App\Models\McpReplayRequest;
 use App\Services\DispatchCapturedRequest;
 use App\Services\ReplayDispatchResult;
 use App\Services\ReplayIdempotencyConflict;
@@ -25,9 +26,10 @@ use Laravel\Mcp\ResponseFactory;
 use Laravel\Mcp\Server\Attributes\Description;
 use Laravel\Mcp\Server\Attributes\Name;
 use Laravel\Mcp\Server\Tools\Annotations\IsIdempotent;
+use UnexpectedValueException;
 
 #[Name('replay_capture')]
-#[Description('Queue one exact scoped capture to one exact active destination. Requires a caller idempotency key. A queue failure after the durable delivery handle exists remains outcome_unknown and is never retried automatically.')]
+#[Description('Queue one exact scoped capture to one exact active destination. Requires a caller idempotency key. Exact retries report in_progress while dispatch is unsettled, already_accepted after acceptance, or terminal outcome_unknown when the result cannot be recovered.')]
 #[IsIdempotent]
 #[ToolClassification(Classification::Content)]
 #[ToolEffect(Effect::Write)]
@@ -62,18 +64,22 @@ final class ReplayCaptureTool extends BobbinTool
                 idempotencyKey: (string) $validated['idempotency_key'],
             );
         } catch (ReplayIdempotencyConflict) {
-            return Response::error('idempotency_conflict');
+            return $this->refused('idempotency_conflict');
         } catch (ReplayOutcomeUnknown $unknown) {
             return Response::error(json_encode([
                 'outcome' => 'outcome_unknown',
                 'delivery_id' => $unknown->deliveryId,
             ], JSON_THROW_ON_ERROR));
         } catch (ModelNotFoundException) {
-            return Response::error('not_found');
+            return $this->refused('not_found');
         }
 
         return Response::structured([
-            'outcome' => $result->duplicate ? 'already_accepted' : 'accepted',
+            'outcome' => match ($result->outcome) {
+                McpReplayRequest::OUTCOME_ACCEPTED => $result->duplicate ? 'already_accepted' : 'accepted',
+                McpReplayRequest::OUTCOME_IN_PROGRESS => 'in_progress',
+                default => throw new UnexpectedValueException('Unexpected replay outcome.'),
+            },
             'delivery' => $this->deliveryHandle($result),
         ]);
     }
@@ -101,5 +107,13 @@ final class ReplayCaptureTool extends BobbinTool
             'destination_id' => $result->destinationId,
             'status' => $result->status,
         ];
+    }
+
+    private function refused(string $reason): Response
+    {
+        return Response::error(json_encode([
+            'outcome' => 'refused',
+            'reason' => $reason,
+        ], JSON_THROW_ON_ERROR));
     }
 }

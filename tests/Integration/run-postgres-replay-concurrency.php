@@ -70,7 +70,15 @@ function concurrencyRequest(string $key, string $actor = 'credential:postgres-ha
     ];
 }
 
-function concurrencyWorker(array $request, string $gate, string $dispatchLog, string $name, int $timeout = 10_000): Process
+function concurrencyWorker(
+    array $request,
+    string $gate,
+    string $dispatchLog,
+    string $name,
+    int $timeout = 10_000,
+    ?string $dispatchGate = null,
+    bool $dispatchMustFail = false,
+): Process
 {
     return new Process([
         PHP_BINARY,
@@ -80,7 +88,19 @@ function concurrencyWorker(array $request, string $gate, string $dispatchLog, st
         $dispatchLog,
         $name,
         (string) $timeout,
+        $dispatchGate ?? '',
+        $dispatchMustFail ? 'fail' : 'succeed',
     ], dirname(__DIR__, 2), timeout: 20);
+}
+
+function concurrencyWaitForDispatches(string $path, int $count): void
+{
+    $deadline = microtime(true) + 10;
+
+    while (count(concurrencyDispatches($path)) < $count) {
+        concurrencyEnsure(microtime(true) < $deadline, 'Worker did not reach dispatch.');
+        Sleep::usleep(1_000);
+    }
 }
 
 function concurrencyWaitReady(Process $process): void
@@ -134,19 +154,27 @@ try {
 
     $same = concurrencyRequest('same-hash-'.$runId);
     $sameGate = $runRoot.'/same.gate';
+    $sameDispatchGate = $runRoot.'/same-dispatch.gate';
     $sameDispatches = $runRoot.'/same-dispatches.jsonl';
-    $sameA = concurrencyWorker($same, $sameGate, $sameDispatches, 'bobbin-same-a-'.$runId);
-    $sameB = concurrencyWorker($same, $sameGate, $sameDispatches, 'bobbin-same-b-'.$runId);
+    $sameA = concurrencyWorker($same, $sameGate, $sameDispatches, 'bobbin-same-a-'.$runId, dispatchGate: $sameDispatchGate);
     $sameA->start();
-    $sameB->start();
     concurrencyWaitReady($sameA);
-    concurrencyWaitReady($sameB);
     concurrencyOpenGate($sameGate);
-    $sameResults = [concurrencyResult($sameA), concurrencyResult($sameB)];
+    concurrencyWaitForDispatches($sameDispatches, 1);
+
+    $sameB = concurrencyWorker($same, $sameGate, $sameDispatches, 'bobbin-same-b-'.$runId);
+    $sameB->start();
+    concurrencyWaitReady($sameB);
+    $sameBResult = concurrencyResult($sameB);
+    concurrencyEnsure($sameBResult['outcome'] === 'in_progress', 'In-flight same-hash retry was not in progress.');
+    concurrencyOpenGate($sameDispatchGate);
+    $sameAResult = concurrencyResult($sameA);
+    $sameResults = [$sameAResult, $sameBResult];
     $sameOutcomes = array_column($sameResults, 'outcome');
     $sameDeliveryIds = array_values(array_unique(array_column($sameResults, 'delivery_id')));
     concurrencyEnsure(max(array_column($sameResults, 'started_at')) < min(array_column($sameResults, 'finished_at')), 'Same-hash workers did not overlap.');
-    concurrencyEnsure(in_array('accepted', $sameOutcomes, true), 'Same-hash race had no accepted winner.');
+    sort($sameOutcomes);
+    concurrencyEnsure($sameOutcomes === ['accepted', 'in_progress'], 'Same-hash race did not produce accepted and in-progress outcomes.');
     concurrencyEnsure(count($sameDeliveryIds) === 1, 'Same-hash callers did not receive one handle.');
     concurrencyEnsure(Delivery::query()->where('captured_request_id', $same['capture_id'])->count() === 1, 'Same-hash race created multiple deliveries.');
     concurrencyEnsure(McpReplayRequest::query()->where('idempotency_key', $same['idempotency_key'])->count() === 1, 'Same-hash race created multiple receipts.');
@@ -161,6 +189,28 @@ try {
     concurrencyEnsure($sameRetryResult['outcome'] === 'already_accepted', 'Settled same-hash retry was not already accepted.');
     concurrencyEnsure($sameRetryResult['delivery_id'] === $sameDeliveryIds[0], 'Settled same-hash retry changed handles.');
     concurrencyEnsure(count(concurrencyDispatches($sameDispatches)) === 1, 'Settled same-hash retry redispatched.');
+
+    $unknown = concurrencyRequest('terminal-unknown-'.$runId);
+    $unknownGate = $runRoot.'/unknown.gate';
+    $unknownDispatches = $runRoot.'/unknown-dispatches.jsonl';
+    concurrencyOpenGate($unknownGate);
+    $unknownInitial = concurrencyWorker($unknown, $unknownGate, $unknownDispatches, 'bobbin-unknown-initial-'.$runId, dispatchMustFail: true);
+    $unknownInitial->start();
+    $unknownInitialResult = concurrencyResult($unknownInitial);
+    concurrencyEnsure($unknownInitialResult['outcome'] === 'outcome_unknown', 'Unrecoverable dispatch was not terminally unknown.');
+
+    $unknownRetryResults = [];
+
+    foreach (['first', 'later'] as $retryName) {
+        $unknownRetry = concurrencyWorker($unknown, $unknownGate, $unknownDispatches, 'bobbin-unknown-'.$retryName.'-'.$runId);
+        $unknownRetry->start();
+        $unknownRetryResults[] = concurrencyResult($unknownRetry);
+    }
+
+    concurrencyEnsure(array_column($unknownRetryResults, 'outcome') === ['outcome_unknown', 'outcome_unknown'], 'A terminally unknown retry changed outcome.');
+    concurrencyEnsure(count(array_unique(array_column([$unknownInitialResult, ...$unknownRetryResults], 'delivery_id'))) === 1, 'Terminally unknown retries changed handles.');
+    concurrencyEnsure(McpReplayRequest::query()->where('idempotency_key', $unknown['idempotency_key'])->value('outcome') === McpReplayRequest::OUTCOME_UNKNOWN, 'Terminally unknown state was not durable.');
+    concurrencyEnsure(count(concurrencyDispatches($unknownDispatches)) === 1, 'Terminally unknown retry redispatched.');
 
     $changed = concurrencyRequest('changed-hash-'.$runId);
     $changedCapture = Endpoint::query()->findOrFail($changed['endpoint_id'])->capturedRequests()->create([
@@ -184,16 +234,17 @@ try {
     $changedOutcomes = array_column($changedResults, 'outcome');
     sort($changedOutcomes);
     concurrencyEnsure(max(array_column($changedResults, 'started_at')) < min(array_column($changedResults, 'finished_at')), 'Changed-hash workers did not overlap.');
-    concurrencyEnsure($changedOutcomes === ['accepted', 'idempotency_conflict'], 'Changed-hash race did not produce one winner and one conflict.');
+    concurrencyEnsure($changedOutcomes === ['accepted', 'refused'], 'Changed-hash race did not produce one winner and one refusal.');
     concurrencyEnsure(Delivery::query()->whereIn('captured_request_id', [$changed['capture_id'], $changedOther['capture_id']])->count() === 1, 'Changed-hash race created multiple deliveries.');
     concurrencyEnsure(McpReplayRequest::query()->where('idempotency_key', $changed['idempotency_key'])->whereNull('delivery_id')->doesntExist(), 'Changed-hash race stranded a null handle.');
     concurrencyEnsure(count(concurrencyDispatches($changedDispatches)) === 1, 'Changed-hash race dispatched more than once.');
-    $changedLoser = $changedResults[0]['outcome'] === 'idempotency_conflict' ? $changed : $changedOther;
+    $changedLoser = $changedResults[0]['outcome'] === 'refused' ? $changed : $changedOther;
     $changedRetryGate = $runRoot.'/changed-retry.gate';
     concurrencyOpenGate($changedRetryGate);
     $changedRetry = concurrencyWorker($changedLoser, $changedRetryGate, $changedDispatches, 'bobbin-changed-retry-'.$runId);
     $changedRetry->start();
-    concurrencyEnsure(concurrencyResult($changedRetry)['outcome'] === 'idempotency_conflict', 'Changed-hash conflict was not stable.');
+    $changedRetryResult = concurrencyResult($changedRetry);
+    concurrencyEnsure($changedRetryResult['outcome'] === 'refused' && $changedRetryResult['reason'] === 'idempotency_conflict', 'Changed-hash refusal was not stable.');
     concurrencyEnsure(count(concurrencyDispatches($changedDispatches)) === 1, 'Changed-hash retry dispatched.');
 
     $rollback = concurrencyRequest('rollback-'.$runId);
@@ -248,6 +299,7 @@ try {
         'database' => config('database.connections.pgsql.database'),
         'server_version' => $version,
         'same_hash' => ['results' => $sameResults, 'overlap_verified' => true, 'dispatches' => 1, 'delivery_id' => $sameDeliveryIds[0]],
+        'terminal_unknown' => ['initial' => $unknownInitialResult, 'retries' => $unknownRetryResults, 'dispatches' => 1],
         'changed_hash' => ['results' => $changedResults, 'overlap_verified' => true, 'stable_conflict' => true, 'dispatches' => 1],
         'winner_rollback' => ['first' => $rollbackAResult, 'contender' => $rollbackBResult, 'overlap_verified' => true, 'dispatches' => 1],
         'null_handle_rows' => 0,

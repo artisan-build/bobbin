@@ -16,12 +16,18 @@ use Illuminate\Database\Eloquent\Model;
  * @property int|null $delivery_capture_id
  * @property int|null $delivery_destination_id
  * @property string|null $delivery_status
- * @property bool $dispatch_accepted
+ * @property string $outcome
  *
  * @mixin IdeHelperMcpReplayRequest
  */
 final class McpReplayRequest extends Model
 {
+    public const string OUTCOME_ACCEPTED = 'accepted';
+
+    public const string OUTCOME_IN_PROGRESS = 'in_progress';
+
+    public const string OUTCOME_UNKNOWN = 'outcome_unknown';
+
     /** @var list<string> */
     protected $fillable = [
         'team_id',
@@ -32,7 +38,7 @@ final class McpReplayRequest extends Model
         'delivery_capture_id',
         'delivery_destination_id',
         'delivery_status',
-        'dispatch_accepted',
+        'outcome',
     ];
 
     /** @return array<string, string> */
@@ -43,7 +49,6 @@ final class McpReplayRequest extends Model
             'delivery_id' => 'integer',
             'delivery_capture_id' => 'integer',
             'delivery_destination_id' => 'integer',
-            'dispatch_accepted' => 'boolean',
         ];
     }
 }
