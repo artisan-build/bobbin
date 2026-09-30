@@ -16,9 +16,9 @@ use Illuminate\Support\Facades\DB;
 use Throwable;
 use UnexpectedValueException;
 
-final class DispatchCapturedRequest
+final readonly class DispatchCapturedRequest
 {
-    public function __construct(private readonly Dispatcher $jobs) {}
+    public function __construct(private Dispatcher $jobs) {}
 
     public function dispatch(CapturedRequest $capturedRequest): Delivery
     {

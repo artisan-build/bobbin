@@ -96,7 +96,7 @@ final class CapturesTool extends BobbinTool
     private function redactedCapture(Endpoint $endpoint, CapturedRequest $capture): array
     {
         $redactedNames = array_fill_keys(array_map(
-            'strtolower',
+            strtolower(...),
             [...$capture->redacted_header_names, ...$endpoint->redacted_header_names],
         ), true);
         $headers = [];

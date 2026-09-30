@@ -13,6 +13,8 @@ use Illuminate\Database\Eloquent\Model;
  * @property string $idempotency_key
  * @property string $request_hash
  * @property int|null $delivery_id
+ *
+ * @mixin IdeHelperMcpReplayRequest
  */
 final class McpReplayRequest extends Model
 {

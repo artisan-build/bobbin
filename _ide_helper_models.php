@@ -140,6 +140,23 @@ namespace App\Models{
 namespace App\Models{
 /**
  * @property int $id
+ * @property int $team_id
+ * @property string $actor_identifier
+ * @property string $idempotency_key
+ * @property string $request_hash
+ * @property int|null $delivery_id
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|McpReplayRequest newModelQuery()
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|McpReplayRequest newQuery()
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|McpReplayRequest query()
+ * @mixin \Eloquent
+ */
+	#[\AllowDynamicProperties]
+	final class IdeHelperMcpReplayRequest {}
+}
+
+namespace App\Models{
+/**
+ * @property int $id
  * @property string $name
  * @property \Carbon\CarbonImmutable|null $created_at
  * @property \Carbon\CarbonImmutable|null $updated_at

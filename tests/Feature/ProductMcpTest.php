@@ -309,5 +309,5 @@ it('preserves the type-qualified delegated actor identifier', function (): void 
     ]);
     request()->setUserResolver(static fn (): DelegatedActor => $actor);
 
-    expect(app(BobbinMcpScope::class)->actorIdentifier())->toBe('bfc-console:'.$actor->id);
+    expect(resolve(BobbinMcpScope::class)->actorIdentifier())->toBe('bfc-console:'.$actor->id);
 });
