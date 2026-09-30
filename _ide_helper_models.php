@@ -145,6 +145,10 @@ namespace App\Models{
  * @property string $idempotency_key
  * @property string $request_hash
  * @property int|null $delivery_id
+ * @property int|null $delivery_capture_id
+ * @property int|null $delivery_destination_id
+ * @property string|null $delivery_status
+ * @property bool $dispatch_accepted
  * @method static \Illuminate\Database\Eloquent\Builder<static>|McpReplayRequest newModelQuery()
  * @method static \Illuminate\Database\Eloquent\Builder<static>|McpReplayRequest newQuery()
  * @method static \Illuminate\Database\Eloquent\Builder<static>|McpReplayRequest query()

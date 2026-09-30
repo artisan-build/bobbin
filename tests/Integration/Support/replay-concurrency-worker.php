@@ -8,6 +8,7 @@ use App\Services\ReplayOutcomeUnknown;
 use Illuminate\Contracts\Bus\Dispatcher;
 use Illuminate\Contracts\Console\Kernel;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Sleep;
 
 require dirname(__DIR__, 3).'/vendor/autoload.php';
 
@@ -61,7 +62,7 @@ while (! is_file($gatePath)) {
         throw new RuntimeException('Concurrency gate did not open.');
     }
 
-    usleep(1_000);
+    Sleep::usleep(1_000);
 }
 
 $startedAt = microtime(true);

@@ -8,6 +8,7 @@ use App\Models\McpReplayRequest;
 use Illuminate\Contracts\Console\Kernel;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Sleep;
 use Symfony\Component\Process\Process;
 
 require dirname(__DIR__, 2).'/vendor/autoload.php';
@@ -89,7 +90,7 @@ function concurrencyWaitReady(Process $process): void
     while (! str_contains($process->getOutput(), 'READY ')) {
         concurrencyEnsure($process->isRunning(), 'Worker exited before reaching its barrier: '.$process->getErrorOutput());
         concurrencyEnsure(microtime(true) < $deadline, 'Worker did not reach its barrier.');
-        usleep(1_000);
+        Sleep::usleep(1_000);
     }
 }
 
@@ -213,7 +214,7 @@ try {
             ['bobbin-rollback-a-'.$runId],
         )->waiting;
         concurrencyEnsure(microtime(true) < $lockDeadline, 'Rollback winner never reached the forced lock wait.');
-        usleep(5_000);
+        Sleep::usleep(5_000);
     } while (! $winnerWaiting);
 
     $rollbackB = concurrencyWorker($rollback, $rollbackGate, $rollbackDispatches, 'bobbin-rollback-b-'.$runId, 10_000);
@@ -229,7 +230,7 @@ try {
         );
         $contenderWaiting = $contenderActivity !== null && $contenderActivity->wait_event_type === 'Lock';
         concurrencyEnsure(microtime(true) < $contenderDeadline, 'Rollback contender never overlapped the first winner.');
-        usleep(5_000);
+        Sleep::usleep(5_000);
     } while (! $contenderWaiting);
 
     $rollbackAResult = concurrencyResult($rollbackA);
