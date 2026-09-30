@@ -222,6 +222,10 @@ it('rejects malformed closed arguments lists enums cursors and limits', function
     $numeric = productMcpCall('/mcp', 'endpoints', (object) [0 => 'numeric'], $token);
     expect($numeric->getStatusCode())->toBeIn([200, 400]);
 
+    if ($numeric->getStatusCode() === 200) {
+        $numeric->assertJsonPath('result.isError', true);
+    }
+
     $statusSchema = collect(productMcpList('/mcp', $token)->json('result.tools'))
         ->firstWhere('name', 'delivery_status')['inputSchema'];
     expect($statusSchema['additionalProperties'])->toBeFalse()
@@ -259,6 +263,12 @@ it('atomically suppresses replay duplicates conflicts on changed requests and re
         ->and(Delivery::query()->count())->toBe(1)
         ->and(McpReplayRequest::query()->count())->toBe(1);
     Queue::assertPushedTimes(DeliverCapturedRequest::class, 1);
+
+    $destination->update(['is_active' => false]);
+    $duplicateAfterDeactivation = productMcpContent(productMcpCall('/mcp/write', 'replay_capture', $arguments, $token));
+    expect($duplicateAfterDeactivation['outcome'])->toBe('already_accepted')
+        ->and($duplicateAfterDeactivation['delivery']['id'])->toBe($accepted['delivery']['id']);
+    $destination->update(['is_active' => true]);
 
     productMcpCall('/mcp/write', 'replay_capture', [
         ...$arguments, 'capture_id' => $otherCapture->id,

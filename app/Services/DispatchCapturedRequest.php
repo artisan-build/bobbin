@@ -71,22 +71,6 @@ final class DispatchCapturedRequest
             $idempotencyKey,
             $requestHash,
         ): ReplayDispatchResult {
-            Endpoint::query()
-                ->where('team_id', $teamId)
-                ->whereKey($endpointId)
-                ->lockForUpdate()
-                ->firstOrFail();
-            $capture = CapturedRequest::query()
-                ->where('endpoint_id', $endpointId)
-                ->whereKey($captureId)
-                ->lockForUpdate()
-                ->firstOrFail();
-            $destination = Destination::query()
-                ->where('endpoint_id', $endpointId)
-                ->where('is_active', true)
-                ->whereKey($destinationId)
-                ->lockForUpdate()
-                ->firstOrFail();
             $now = now();
             $inserted = McpReplayRequest::query()->insertOrIgnore([
                 'team_id' => $teamId,
@@ -117,6 +101,23 @@ final class DispatchCapturedRequest
             if ($inserted !== 1) {
                 throw (new ModelNotFoundException)->setModel(McpReplayRequest::class);
             }
+
+            Endpoint::query()
+                ->where('team_id', $teamId)
+                ->whereKey($endpointId)
+                ->lockForUpdate()
+                ->firstOrFail();
+            $capture = CapturedRequest::query()
+                ->where('endpoint_id', $endpointId)
+                ->whereKey($captureId)
+                ->lockForUpdate()
+                ->firstOrFail();
+            $destination = Destination::query()
+                ->where('endpoint_id', $endpointId)
+                ->where('is_active', true)
+                ->whereKey($destinationId)
+                ->lockForUpdate()
+                ->firstOrFail();
 
             $delivery = $destination->deliveries()->create([
                 'captured_request_id' => $capture->id,
