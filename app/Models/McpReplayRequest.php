@@ -13,6 +13,10 @@ use Illuminate\Database\Eloquent\Model;
  * @property string $idempotency_key
  * @property string $request_hash
  * @property int|null $delivery_id
+ * @property int|null $delivery_capture_id
+ * @property int|null $delivery_destination_id
+ * @property string|null $delivery_status
+ * @property bool $dispatch_accepted
  *
  * @mixin IdeHelperMcpReplayRequest
  */
@@ -25,6 +29,10 @@ final class McpReplayRequest extends Model
         'idempotency_key',
         'request_hash',
         'delivery_id',
+        'delivery_capture_id',
+        'delivery_destination_id',
+        'delivery_status',
+        'dispatch_accepted',
     ];
 
     /** @return array<string, string> */
@@ -33,6 +41,9 @@ final class McpReplayRequest extends Model
         return [
             'team_id' => 'integer',
             'delivery_id' => 'integer',
+            'delivery_capture_id' => 'integer',
+            'delivery_destination_id' => 'integer',
+            'dispatch_accepted' => 'boolean',
         ];
     }
 }

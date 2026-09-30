@@ -6,8 +6,8 @@ namespace App\Mcp\Tools;
 
 use App\Mcp\BobbinMcpScope;
 use App\Mcp\BobbinTool;
-use App\Models\Delivery;
 use App\Services\DispatchCapturedRequest;
+use App\Services\ReplayDispatchResult;
 use App\Services\ReplayIdempotencyConflict;
 use App\Services\ReplayOutcomeUnknown;
 use ArtisanBuild\BuiltForCloud\Mcp\AdvertisesToolClassification;
@@ -27,7 +27,7 @@ use Laravel\Mcp\Server\Attributes\Name;
 use Laravel\Mcp\Server\Tools\Annotations\IsIdempotent;
 
 #[Name('replay_capture')]
-#[Description('Queue one exact scoped capture to one exact active destination. Requires a caller idempotency key. A queue failure after the durable delivery handle exists is reported as outcome_unknown and is never retried automatically.')]
+#[Description('Queue one exact scoped capture to one exact active destination. Requires a caller idempotency key. A queue failure after the durable delivery handle exists remains outcome_unknown and is never retried automatically.')]
 #[IsIdempotent]
 #[ToolClassification(Classification::Content)]
 #[ToolEffect(Effect::Write)]
@@ -74,7 +74,7 @@ final class ReplayCaptureTool extends BobbinTool
 
         return Response::structured([
             'outcome' => $result->duplicate ? 'already_accepted' : 'accepted',
-            'delivery' => $this->deliveryHandle($result->delivery),
+            'delivery' => $this->deliveryHandle($result),
         ]);
     }
 
@@ -93,13 +93,13 @@ final class ReplayCaptureTool extends BobbinTool
     }
 
     /** @return array<string, mixed> */
-    private function deliveryHandle(Delivery $delivery): array
+    private function deliveryHandle(ReplayDispatchResult $result): array
     {
         return [
-            'id' => $delivery->id,
-            'capture_id' => $delivery->captured_request_id,
-            'destination_id' => $delivery->destination_id,
-            'status' => $delivery->status,
+            'id' => $result->deliveryId,
+            'capture_id' => $result->captureId,
+            'destination_id' => $result->destinationId,
+            'status' => $result->status,
         ];
     }
 }

@@ -9,7 +9,7 @@ use Throwable;
 
 final class ReplayOutcomeUnknown extends RuntimeException
 {
-    public function __construct(public readonly int $deliveryId, Throwable $previous)
+    public function __construct(public readonly int $deliveryId, ?Throwable $previous = null)
     {
         parent::__construct('The replay queue outcome is unknown.', 0, $previous);
     }

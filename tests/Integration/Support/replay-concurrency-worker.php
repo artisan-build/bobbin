@@ -1,0 +1,108 @@
+<?php
+
+declare(strict_types=1);
+
+use App\Services\DispatchCapturedRequest;
+use App\Services\ReplayIdempotencyConflict;
+use App\Services\ReplayOutcomeUnknown;
+use Illuminate\Contracts\Bus\Dispatcher;
+use Illuminate\Contracts\Console\Kernel;
+use Illuminate\Support\Facades\DB;
+
+require dirname(__DIR__, 3).'/vendor/autoload.php';
+
+foreach ([
+    'APP_ENV' => 'testing',
+    'APP_KEY' => 'base64:'.base64_encode(str_repeat('b', 32)),
+    'CACHE_STORE' => 'array',
+    'DB_CONNECTION' => 'pgsql',
+    'DB_DATABASE' => 'bobbin_mcp_test',
+    'DB_HOST' => '127.0.0.1',
+    'DB_PASSWORD' => '',
+    'DB_PORT' => '5432',
+    'DB_URL' => '',
+    'DB_USERNAME' => 'root',
+    'QUEUE_CONNECTION' => 'sync',
+] as $name => $value) {
+    putenv($name.'='.$value);
+    $_ENV[$name] = $value;
+    $_SERVER[$name] = $value;
+}
+
+$request = json_decode(base64_decode($argv[1], true), true, flags: JSON_THROW_ON_ERROR);
+$gatePath = $argv[2];
+$dispatchLog = $argv[3];
+$applicationName = $argv[4];
+$statementTimeout = (int) $argv[5];
+
+$app = require dirname(__DIR__, 3).'/bootstrap/app.php';
+$app->make(Kernel::class)->bootstrap();
+DB::statement("select set_config('application_name', ?, false)", [$applicationName]);
+DB::statement("select set_config('statement_timeout', ?, false)", [(string) $statementTimeout]);
+
+$jobs = Mockery::mock(Dispatcher::class);
+$jobs->shouldReceive('dispatch')->zeroOrMoreTimes()->andReturnUsing(
+    static function (object $job) use ($dispatchLog): object {
+        file_put_contents($dispatchLog, json_encode([
+            'pid' => getmypid(),
+            'delivery_id' => $job->deliveryId,
+        ], JSON_THROW_ON_ERROR).PHP_EOL, FILE_APPEND | LOCK_EX);
+
+        return $job;
+    },
+);
+
+fwrite(STDOUT, 'READY '.getmypid().PHP_EOL);
+fflush(STDOUT);
+$deadline = microtime(true) + 10;
+
+while (! is_file($gatePath)) {
+    if (microtime(true) >= $deadline) {
+        throw new RuntimeException('Concurrency gate did not open.');
+    }
+
+    usleep(1_000);
+}
+
+$startedAt = microtime(true);
+
+try {
+    $result = (new DispatchCapturedRequest($jobs))->dispatchIdempotently(
+        teamId: (int) $request['team_id'],
+        endpointId: (int) $request['endpoint_id'],
+        captureId: (int) $request['capture_id'],
+        destinationId: (int) $request['destination_id'],
+        actorIdentifier: (string) $request['actor_identifier'],
+        idempotencyKey: (string) $request['idempotency_key'],
+    );
+    $payload = [
+        'outcome' => $result->duplicate ? 'already_accepted' : 'accepted',
+        'delivery_id' => $result->deliveryId,
+        'started_at' => $startedAt,
+        'finished_at' => microtime(true),
+    ];
+} catch (ReplayOutcomeUnknown $exception) {
+    $payload = [
+        'outcome' => 'outcome_unknown',
+        'delivery_id' => $exception->deliveryId,
+        'started_at' => $startedAt,
+        'finished_at' => microtime(true),
+    ];
+} catch (ReplayIdempotencyConflict) {
+    $payload = [
+        'outcome' => 'idempotency_conflict',
+        'started_at' => $startedAt,
+        'finished_at' => microtime(true),
+    ];
+} catch (Throwable $exception) {
+    $payload = [
+        'outcome' => 'error',
+        'exception' => $exception::class,
+        'started_at' => $startedAt,
+        'finished_at' => microtime(true),
+    ];
+}
+
+fwrite(STDOUT, 'RESULT '.json_encode($payload, JSON_THROW_ON_ERROR).PHP_EOL);
+fflush(STDOUT);
+Mockery::close();

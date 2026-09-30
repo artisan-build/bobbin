@@ -92,9 +92,20 @@ final readonly class DispatchCapturedRequest
             }
 
             if ($replay->delivery_id !== null) {
+                if ($replay->delivery_capture_id === null
+                    || $replay->delivery_destination_id === null
+                    || $replay->delivery_status === null) {
+                    throw (new ModelNotFoundException)->setModel(McpReplayRequest::class);
+                }
+
                 return new ReplayDispatchResult(
-                    Delivery::query()->findOrFail($replay->delivery_id),
+                    $replay->id,
+                    $replay->delivery_id,
+                    $replay->delivery_capture_id,
+                    $replay->delivery_destination_id,
+                    $replay->delivery_status,
                     true,
+                    $replay->dispatch_accepted,
                 );
             }
 
@@ -122,19 +133,60 @@ final readonly class DispatchCapturedRequest
             $delivery = $destination->deliveries()->create([
                 'captured_request_id' => $capture->id,
             ]);
-            $replay->update(['delivery_id' => $delivery->id]);
+            $replay->update([
+                'delivery_id' => $delivery->id,
+                'delivery_capture_id' => $delivery->captured_request_id,
+                'delivery_destination_id' => $delivery->destination_id,
+                'delivery_status' => $delivery->status,
+                'dispatch_accepted' => false,
+            ]);
 
-            return new ReplayDispatchResult($delivery, false);
+            return new ReplayDispatchResult(
+                $replay->id,
+                $delivery->id,
+                $delivery->captured_request_id,
+                $delivery->destination_id,
+                $delivery->status,
+                false,
+                false,
+            );
         });
 
-        if (! $result->duplicate) {
-            try {
-                $this->jobs->dispatch(new DeliverCapturedRequest($result->delivery->id));
-            } catch (Throwable $exception) {
-                throw new ReplayOutcomeUnknown($result->delivery->id, $exception);
+        if ($result->duplicate) {
+            if (! $result->dispatchAccepted) {
+                throw new ReplayOutcomeUnknown($result->deliveryId);
             }
+
+            return $result;
         }
 
-        return $result;
+        try {
+            $this->jobs->dispatch(new DeliverCapturedRequest($result->deliveryId));
+        } catch (Throwable $exception) {
+            throw new ReplayOutcomeUnknown($result->deliveryId, $exception);
+        }
+
+        try {
+            $accepted = McpReplayRequest::query()
+                ->whereKey($result->replayRequestId)
+                ->where('dispatch_accepted', false)
+                ->update(['dispatch_accepted' => true]);
+        } catch (Throwable $exception) {
+            throw new ReplayOutcomeUnknown($result->deliveryId, $exception);
+        }
+
+        if ($accepted !== 1) {
+            throw new ReplayOutcomeUnknown($result->deliveryId);
+        }
+
+        return new ReplayDispatchResult(
+            $result->replayRequestId,
+            $result->deliveryId,
+            $result->captureId,
+            $result->destinationId,
+            $result->status,
+            false,
+            true,
+        );
     }
 }

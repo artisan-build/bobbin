@@ -53,9 +53,9 @@ final class DeliveryStatusTool extends BobbinTool
             'capture_id' => ['sometimes', 'integer', 'min:1'],
             'destination_id' => ['sometimes', 'integer', 'min:1'],
             'statuses' => ['sometimes', 'array', 'list', 'min:1', 'max:4'],
-            'statuses.*' => ['required', 'string', Rule::in(self::STATUSES)],
+            'statuses.*' => ['required', 'string', 'distinct:strict', Rule::in(self::STATUSES)],
             'cursor' => ['sometimes', 'string', 'max:512'],
-            'limit' => ['sometimes', 'integer', 'min:1', 'max:100'],
+            'limit' => ['sometimes', 'integer:strict', 'min:1', 'max:100'],
         ]);
         $team = $scope->team();
         $endpoint = Endpoint::query()->where('team_id', $team->id)->find((int) $validated['endpoint_id']);

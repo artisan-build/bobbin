@@ -16,7 +16,11 @@ return new class extends Migration
             $table->string('actor_identifier');
             $table->string('idempotency_key', 128);
             $table->char('request_hash', 64);
-            $table->foreignId('delivery_id')->nullable()->constrained()->cascadeOnDelete();
+            $table->unsignedBigInteger('delivery_id')->nullable();
+            $table->unsignedBigInteger('delivery_capture_id')->nullable();
+            $table->unsignedBigInteger('delivery_destination_id')->nullable();
+            $table->string('delivery_status', 16)->nullable();
+            $table->boolean('dispatch_accepted')->default(false);
             $table->timestamps();
             $table->unique(['team_id', 'actor_identifier', 'idempotency_key'], 'mcp_replay_scope_key_unique');
         });

@@ -21,6 +21,7 @@ use ArtisanBuild\BuiltForCloud\SubjectType;
 use ArtisanBuild\BuiltForCloud\Testing\McpDelegatedTools;
 use ArtisanBuild\BuiltForCloud\Testing\McpProductAdmission;
 use Illuminate\Contracts\Bus\Dispatcher;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
@@ -31,7 +32,7 @@ beforeEach(function (): void {
     Queue::fake();
 });
 
-function productMcpToken(): string
+function productMcpToken(string $subjectRef = 'bobbin-installation'): string
 {
     $token = 'bobbin-mcp-'.Str::random(32);
 
@@ -39,7 +40,7 @@ function productMcpToken(): string
         'kind' => CredentialKind::Bearer,
         'purpose' => CredentialPurpose::Mcp,
         'subject_type' => SubjectType::Installation,
-        'subject_ref' => 'bobbin-installation',
+        'subject_ref' => $subjectRef,
         'name' => 'product-mcp',
         'status' => CredentialStatus::Active,
         'secret_hash' => hash('sha256', $token),
@@ -94,6 +95,14 @@ function productMcpEndpoint(int $teamId, array $attributes = []): Endpoint
 
 it('mounts exact effect doors and advertises four conforming tools without a destructive door', function (): void {
     $token = productMcpToken();
+    $teamId = (int) DB::table('teams')->value('id');
+    $endpoint = productMcpEndpoint($teamId);
+    $capture = $endpoint->capturedRequests()->create([
+        'method' => 'POST', 'raw_query' => '', 'headers' => [], 'body' => 'payload', 'received_at' => now(),
+    ]);
+    $destination = $endpoint->destinations()->create([
+        'url' => 'https://receiver.example.test/hook', 'is_active' => true,
+    ]);
 
     McpDelegatedTools::assertConforms(BobbinMcpServer::class);
     McpDelegatedTools::assertConforms(BobbinReadMcpServer::class);
@@ -112,8 +121,13 @@ it('mounts exact effect doors and advertises four conforming tools without a des
     expect($readNames)->toBe(['captures', 'delivery_status', 'endpoints'])
         ->and($writeNames)->toBe(['replay_capture']);
 
-    productMcpCall('/mcp', 'replay_capture', [], $token)->assertStatus(400);
-    productMcpCall('/mcp/write', 'endpoints', [], $token)->assertStatus(400);
+    productMcpCall('/mcp', 'replay_capture', [
+        'endpoint_id' => $endpoint->id,
+        'capture_id' => $capture->id,
+        'destination_id' => $destination->id,
+        'idempotency_key' => 'wrong-door',
+    ], $token)->assertStatus(400);
+    productMcpCall('/mcp/write', 'endpoints', ['limit' => 1], $token)->assertStatus(400);
     productMcpCall('/mcp/write', 'destroy_everything', [], $token)->assertStatus(400);
     expect(Delivery::query()->count())->toBe(0);
 
@@ -150,6 +164,24 @@ it('scopes and stably paginates every read while redacting content before serial
         productMcpEndpoint($teamId);
     }
 
+    $snapshotEndpoint = productMcpEndpoint($teamId, ['name' => 'Snapshot controls']);
+    $snapshotEndpoint->capturedRequests()->create([
+        'method' => 'POST',
+        'raw_query' => 'token='.$secret,
+        'headers' => ['x-snapshot' => [$secret]],
+        'body' => $secret,
+        'redacted_header_names' => ['X-Snapshot'],
+        'body_redacted' => true,
+        'received_at' => now(),
+    ]);
+    $snapshotEndpoint->capturedRequests()->create([
+        'method' => 'POST',
+        'raw_query' => '',
+        'headers' => ['x-visible' => ['snapshot-visible']],
+        'body' => 'visible-body',
+        'received_at' => now()->addSecond(),
+    ]);
+
     $foreignEndpoint = productMcpEndpoint($foreignTeamId, ['name' => 'Foreign endpoint']);
     $foreignCapture = $foreignEndpoint->capturedRequests()->create([
         'method' => 'POST', 'raw_query' => '', 'headers' => [], 'body' => 'foreign', 'received_at' => now(),
@@ -164,7 +196,7 @@ it('scopes and stably paginates every read while redacting content before serial
         'limit' => 100, 'cursor' => $endpointFirst['next_cursor'],
     ], $token));
     $endpointIds = array_column([...$endpointFirst['items'], ...$endpointSecond['items']], 'id');
-    expect($endpointIds)->toHaveCount(106)
+    expect($endpointIds)->toHaveCount(107)
         ->and($endpointIds)->toBe(array_values(array_unique($endpointIds)))
         ->and($endpointIds)->not->toContain($foreignEndpoint->id);
 
@@ -176,8 +208,17 @@ it('scopes and stably paginates every read while redacting content before serial
     $captureIds = array_column([...$captureFirst['items'], ...$captureSecond['items']], 'id');
     expect($captureIds)->toHaveCount(105)->toBe(array_values(array_unique($captureIds)))
         ->and($captureFirst['items'][0]['headers']['x-secret'])->toBe([CapturedRequest::REDACTION_MARKER])
+        ->and($captureFirst['items'][0]['headers']['x-visible'])->toBe(['visible-1'])
         ->and($captureFirst['items'][0]['body'])->toBe(CapturedRequest::REDACTION_MARKER)
         ->and($captureFirstResponse->getContent())->not->toContain($secret);
+
+    $snapshotResponse = productMcpCall('/mcp', 'captures', ['endpoint_id' => $snapshotEndpoint->id], $token);
+    $snapshotContent = productMcpContent($snapshotResponse);
+    expect($snapshotContent['items'][0]['headers']['x-snapshot'])->toBe([CapturedRequest::REDACTION_MARKER])
+        ->and($snapshotContent['items'][0]['body'])->toBe(CapturedRequest::REDACTION_MARKER)
+        ->and($snapshotContent['items'][1]['headers']['x-visible'])->toBe(['snapshot-visible'])
+        ->and($snapshotContent['items'][1]['body'])->toBe('visible-body')
+        ->and($snapshotResponse->getContent())->not->toContain($secret);
 
     $deliveryFirst = productMcpContent(productMcpCall('/mcp', 'delivery_status', [
         'endpoint_id' => $endpoint->id, 'statuses' => ['queued'], 'limit' => 100,
@@ -205,8 +246,11 @@ it('rejects malformed closed arguments lists enums cursors and limits', function
         ['endpoints', ['unknown' => true]],
         ['endpoints', ['limit' => 0]],
         ['endpoints', ['limit' => 101]],
+        ['endpoints', ['limit' => '5']],
+        ['endpoints', ['limit' => true]],
         ['endpoints', ['cursor' => 'not-a-cursor']],
         ['delivery_status', ['endpoint_id' => $endpoint->id, 'statuses' => ['unknown']]],
+        ['delivery_status', ['endpoint_id' => $endpoint->id, 'statuses' => ['queued', 'queued']]],
         ['delivery_status', ['endpoint_id' => $endpoint->id, 'statuses' => ['queued' => true]]],
     ];
 
@@ -289,14 +333,92 @@ it('atomically suppresses replay duplicates conflicts on changed requests and re
     $unknown = productMcpCall('/mcp/write', 'replay_capture', [
         ...$arguments, 'idempotency_key' => 'uncertain',
     ], $token)->assertOk()->assertJsonPath('result.isError', true);
-    expect($unknown->getContent())->toContain('outcome_unknown')
+    $unknownContent = productMcpContent($unknown);
+    $unknownDeliveryId = (int) Delivery::query()->latest('id')->value('id');
+    expect($unknownContent)->toBe([
+        'outcome' => 'outcome_unknown',
+        'delivery_id' => $unknownDeliveryId,
+    ])
         ->and(Delivery::query()->count())->toBe(2)
         ->and(McpReplayRequest::query()->count())->toBe(2);
 
-    $retry = productMcpContent(productMcpCall('/mcp/write', 'replay_capture', [
+    $retry = productMcpCall('/mcp/write', 'replay_capture', [
         ...$arguments, 'idempotency_key' => 'uncertain',
-    ], $token));
-    expect($retry['outcome'])->toBe('already_accepted');
+    ], $token)->assertOk()->assertJsonPath('result.isError', true);
+    expect(productMcpContent($retry))->toBe($unknownContent)
+        ->and(McpReplayRequest::query()->where('idempotency_key', 'uncertain')->firstOrFail()->dispatch_accepted)->toBeFalse();
+});
+
+it('keeps replay receipts and consumed keys after capture retention pruning', function (): void {
+    $token = productMcpToken();
+    $teamId = (int) DB::table('teams')->value('id');
+    $endpoint = productMcpEndpoint($teamId, ['retention_days' => 1]);
+    $capture = $endpoint->capturedRequests()->create([
+        'method' => 'POST',
+        'raw_query' => 'secret=must-not-enter-ledger',
+        'headers' => ['authorization' => ['must-not-enter-ledger']],
+        'body' => 'must-not-enter-ledger',
+        'received_at' => now()->subDays(2),
+    ]);
+    $otherCapture = $endpoint->capturedRequests()->create([
+        'method' => 'POST', 'raw_query' => '', 'headers' => [], 'body' => 'other', 'received_at' => now(),
+    ]);
+    $destination = $endpoint->destinations()->create([
+        'url' => 'https://receiver.example.test/hook', 'is_active' => true,
+    ]);
+    $arguments = [
+        'endpoint_id' => $endpoint->id,
+        'capture_id' => $capture->id,
+        'destination_id' => $destination->id,
+        'idempotency_key' => 'retained-receipt',
+    ];
+
+    $accepted = productMcpContent(productMcpCall('/mcp/write', 'replay_capture', $arguments, $token));
+    expect(Artisan::call('captures:prune'))->toBe(0)
+        ->and(CapturedRequest::query()->whereKey($capture->id)->exists())->toBeFalse()
+        ->and(Delivery::query()->whereKey($accepted['delivery']['id'])->exists())->toBeFalse()
+        ->and(McpReplayRequest::query()->where('idempotency_key', 'retained-receipt')->exists())->toBeTrue();
+
+    $retry = productMcpContent(productMcpCall('/mcp/write', 'replay_capture', $arguments, $token));
+    expect($retry['outcome'])->toBe('already_accepted')
+        ->and($retry['delivery'])->toBe($accepted['delivery']);
+
+    $conflict = productMcpCall('/mcp/write', 'replay_capture', [
+        ...$arguments, 'capture_id' => $otherCapture->id,
+    ], $token)->assertOk()->assertJsonPath('result.isError', true);
+    expect($conflict->getContent())->toContain('idempotency_conflict')
+        ->and(json_encode(McpReplayRequest::query()->firstOrFail()->toArray(), JSON_THROW_ON_ERROR))
+        ->not->toContain('must-not-enter-ledger');
+    Queue::assertPushedTimes(DeliverCapturedRequest::class, 1);
+});
+
+it('partitions replay idempotency by the authenticated actor', function (): void {
+    $firstToken = productMcpToken('installation-a');
+    $secondToken = productMcpToken('installation-b');
+    $teamId = (int) DB::table('teams')->value('id');
+    $endpoint = productMcpEndpoint($teamId);
+    $capture = $endpoint->capturedRequests()->create([
+        'method' => 'POST', 'raw_query' => '', 'headers' => [], 'body' => 'payload', 'received_at' => now(),
+    ]);
+    $destination = $endpoint->destinations()->create([
+        'url' => 'https://receiver.example.test/hook', 'is_active' => true,
+    ]);
+    $arguments = [
+        'endpoint_id' => $endpoint->id,
+        'capture_id' => $capture->id,
+        'destination_id' => $destination->id,
+        'idempotency_key' => 'actor-shared-key',
+    ];
+
+    $first = productMcpContent(productMcpCall('/mcp/write', 'replay_capture', $arguments, $firstToken));
+    $second = productMcpContent(productMcpCall('/mcp/write', 'replay_capture', $arguments, $secondToken));
+
+    expect($first['outcome'])->toBe('accepted')
+        ->and($second['outcome'])->toBe('accepted')
+        ->and($second['delivery']['id'])->not->toBe($first['delivery']['id'])
+        ->and(McpReplayRequest::query()->distinct()->count('actor_identifier'))->toBe(2)
+        ->and(Delivery::query()->count())->toBe(2);
+    Queue::assertPushedTimes(DeliverCapturedRequest::class, 2);
 });
 
 it('preserves the type-qualified delegated actor identifier', function (): void {

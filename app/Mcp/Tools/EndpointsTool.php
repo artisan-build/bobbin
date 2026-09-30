@@ -40,7 +40,7 @@ final class EndpointsTool extends BobbinTool
     {
         $validated = $this->validateArguments($request, [
             'cursor' => ['sometimes', 'string', 'max:512'],
-            'limit' => ['sometimes', 'integer', 'min:1', 'max:100'],
+            'limit' => ['sometimes', 'integer:strict', 'min:1', 'max:100'],
         ]);
         $team = $scope->team();
         $limit = (int) ($validated['limit'] ?? 25);

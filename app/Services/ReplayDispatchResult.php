@@ -4,12 +4,15 @@ declare(strict_types=1);
 
 namespace App\Services;
 
-use App\Models\Delivery;
-
 final readonly class ReplayDispatchResult
 {
     public function __construct(
-        public Delivery $delivery,
+        public int $replayRequestId,
+        public int $deliveryId,
+        public int $captureId,
+        public int $destinationId,
+        public string $status,
         public bool $duplicate,
+        public bool $dispatchAccepted,
     ) {}
 }
