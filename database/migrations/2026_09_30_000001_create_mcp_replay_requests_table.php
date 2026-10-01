@@ -21,8 +21,11 @@ return new class extends Migration
             $table->unsignedBigInteger('delivery_destination_id')->nullable();
             $table->string('delivery_status', 16)->nullable();
             $table->string('outcome', 16)->default('in_progress');
+            $table->timestampTz('queue_accepted_at')->nullable();
+            $table->timestampTz('lease_expires_at')->nullable();
             $table->timestamps();
             $table->unique(['team_id', 'actor_identifier', 'idempotency_key'], 'mcp_replay_scope_key_unique');
+            $table->index(['outcome', 'lease_expires_at']);
         });
     }
 

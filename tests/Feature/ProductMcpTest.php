@@ -11,6 +11,7 @@ use App\Models\CapturedRequest;
 use App\Models\Delivery;
 use App\Models\Endpoint;
 use App\Models\McpReplayRequest;
+use App\Services\ReplaySettlementFaultInjector;
 use ArtisanBuild\BuiltForCloud\Console\ConsoleRole;
 use ArtisanBuild\BuiltForCloud\Console\DelegatedActor;
 use ArtisanBuild\BuiltForCloud\Credential;
@@ -20,6 +21,7 @@ use ArtisanBuild\BuiltForCloud\CredentialStatus;
 use ArtisanBuild\BuiltForCloud\SubjectType;
 use ArtisanBuild\BuiltForCloud\Testing\McpDelegatedTools;
 use ArtisanBuild\BuiltForCloud\Testing\McpProductAdmission;
+use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Contracts\Bus\Dispatcher;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
@@ -91,6 +93,93 @@ function productMcpEndpoint(int $teamId, array $attributes = []): Endpoint
     $endpoint->save();
 
     return $endpoint;
+}
+
+/** @return array{token: string, arguments: array<string, int|string>, delivery: Delivery, receipt: McpReplayRequest} */
+function pendingProductMcpReplay(string $idempotencyKey): array
+{
+    $token = productMcpToken();
+    $credentialId = Credential::query()->latest('id')->firstOrFail()->id;
+    $teamId = (int) DB::table('teams')->value('id');
+    $endpoint = productMcpEndpoint($teamId);
+    $capture = $endpoint->capturedRequests()->create([
+        'method' => 'POST', 'raw_query' => '', 'headers' => [], 'body' => 'payload', 'received_at' => now(),
+    ]);
+    $destination = $endpoint->destinations()->create([
+        'url' => 'https://receiver.example.test/hook', 'is_active' => true,
+    ]);
+    $delivery = $destination->deliveries()->create(['captured_request_id' => $capture->id]);
+    $arguments = [
+        'endpoint_id' => $endpoint->id,
+        'capture_id' => $capture->id,
+        'destination_id' => $destination->id,
+        'idempotency_key' => $idempotencyKey,
+    ];
+    $receipt = McpReplayRequest::query()->create([
+        'team_id' => $teamId,
+        'actor_identifier' => 'credential:'.$credentialId,
+        'idempotency_key' => $idempotencyKey,
+        'request_hash' => hash('sha256', json_encode([
+            'team_id' => $teamId,
+            'endpoint_id' => $endpoint->id,
+            'capture_id' => $capture->id,
+            'destination_id' => $destination->id,
+        ], JSON_THROW_ON_ERROR)),
+        'delivery_id' => $delivery->id,
+        'delivery_capture_id' => $capture->id,
+        'delivery_destination_id' => $destination->id,
+        'delivery_status' => $delivery->status,
+        'outcome' => McpReplayRequest::OUTCOME_IN_PROGRESS,
+        'lease_expires_at' => now()->addSeconds(McpReplayRequest::LEASE_SECONDS),
+    ]);
+
+    return compact('token', 'arguments', 'delivery', 'receipt');
+}
+
+/** @return array{token: string, arguments: array<string, int|string>, delivery: Delivery, receipt: McpReplayRequest, job: DeliverCapturedRequest} */
+function queuedPendingProductMcpReplay(string $idempotencyKey): array
+{
+    $token = productMcpToken();
+    $teamId = (int) DB::table('teams')->value('id');
+    $endpoint = productMcpEndpoint($teamId);
+    $capture = $endpoint->capturedRequests()->create([
+        'method' => 'POST', 'raw_query' => '', 'headers' => [], 'body' => 'payload', 'received_at' => now(),
+    ]);
+    $destination = $endpoint->destinations()->create([
+        'url' => 'https://receiver.example.test/hook', 'is_active' => true,
+    ]);
+    $arguments = [
+        'endpoint_id' => $endpoint->id,
+        'capture_id' => $capture->id,
+        'destination_id' => $destination->id,
+        'idempotency_key' => $idempotencyKey,
+    ];
+    DB::unprepared(<<<'SQL'
+        CREATE TRIGGER fail_replay_acceptance
+        BEFORE UPDATE OF outcome ON mcp_replay_requests
+        WHEN NEW.outcome = 'accepted'
+        BEGIN
+            SELECT RAISE(FAIL, 'forced acceptance write failure');
+        END
+        SQL);
+
+    try {
+        $response = productMcpContent(productMcpCall('/mcp/write', 'replay_capture', $arguments, $token));
+    } finally {
+        DB::unprepared('DROP TRIGGER fail_replay_acceptance');
+    }
+
+    $receipt = McpReplayRequest::query()->where('idempotency_key', $idempotencyKey)->firstOrFail();
+    $delivery = Delivery::query()->findOrFail($receipt->delivery_id);
+    $job = Queue::pushed(DeliverCapturedRequest::class)
+        ->first(fn (DeliverCapturedRequest $queued): bool => $queued->replayRequestId === $receipt->id);
+    expect($response['outcome'])->toBe('in_progress')
+        ->and($job)->toBeInstanceOf(DeliverCapturedRequest::class)
+        ->and(Queue::pushed(DeliverCapturedRequest::class)
+            ->filter(fn (DeliverCapturedRequest $queued): bool => $queued->replayRequestId === $receipt->id))
+        ->toHaveCount(1);
+
+    return compact('token', 'arguments', 'delivery', 'receipt', 'job');
 }
 
 it('mounts exact effect doors and advertises four conforming tools without a destructive door', function (): void {
@@ -363,39 +452,7 @@ it('atomically suppresses replay duplicates and keeps unrecoverable dispatch ter
 });
 
 it('reports a durable in-progress replay without redispatching it', function (): void {
-    $token = productMcpToken();
-    $credentialId = Credential::query()->latest('id')->firstOrFail()->id;
-    $teamId = (int) DB::table('teams')->value('id');
-    $endpoint = productMcpEndpoint($teamId);
-    $capture = $endpoint->capturedRequests()->create([
-        'method' => 'POST', 'raw_query' => '', 'headers' => [], 'body' => 'payload', 'received_at' => now(),
-    ]);
-    $destination = $endpoint->destinations()->create([
-        'url' => 'https://receiver.example.test/hook', 'is_active' => true,
-    ]);
-    $delivery = $destination->deliveries()->create(['captured_request_id' => $capture->id]);
-    $arguments = [
-        'endpoint_id' => $endpoint->id,
-        'capture_id' => $capture->id,
-        'destination_id' => $destination->id,
-        'idempotency_key' => 'still-dispatching',
-    ];
-    $receipt = McpReplayRequest::query()->create([
-        'team_id' => $teamId,
-        'actor_identifier' => 'credential:'.$credentialId,
-        'idempotency_key' => $arguments['idempotency_key'],
-        'request_hash' => hash('sha256', json_encode([
-            'team_id' => $teamId,
-            'endpoint_id' => $endpoint->id,
-            'capture_id' => $capture->id,
-            'destination_id' => $destination->id,
-        ], JSON_THROW_ON_ERROR)),
-        'delivery_id' => $delivery->id,
-        'delivery_capture_id' => $capture->id,
-        'delivery_destination_id' => $destination->id,
-        'delivery_status' => $delivery->status,
-        'outcome' => McpReplayRequest::OUTCOME_IN_PROGRESS,
-    ]);
+    ['token' => $token, 'arguments' => $arguments, 'delivery' => $delivery, 'receipt' => $receipt] = pendingProductMcpReplay('still-dispatching');
 
     $response = productMcpCall('/mcp/write', 'replay_capture', $arguments, $token)
         ->assertOk()
@@ -405,8 +462,8 @@ it('reports a durable in-progress replay without redispatching it', function ():
         'outcome' => 'in_progress',
         'delivery' => [
             'id' => $delivery->id,
-            'capture_id' => $capture->id,
-            'destination_id' => $destination->id,
+            'capture_id' => $delivery->captured_request_id,
+            'destination_id' => $delivery->destination_id,
             'status' => 'queued',
         ],
     ]);
@@ -416,12 +473,153 @@ it('reports a durable in-progress replay without redispatching it', function ():
 
     $exhausted = productMcpCall('/mcp/write', 'replay_capture', $arguments, $token)
         ->assertOk()
-        ->assertJsonPath('result.isError', true);
+        ->assertJsonPath('result.isError', false);
     expect(productMcpContent($exhausted))->toBe([
-        'outcome' => 'outcome_unknown',
-        'delivery_id' => $delivery->id,
-    ]);
+        'outcome' => 'already_accepted',
+        'delivery' => [
+            'id' => $delivery->id,
+            'capture_id' => $delivery->captured_request_id,
+            'destination_id' => $delivery->destination_id,
+            'status' => Delivery::STATUS_QUEUED,
+        ],
+    ])->and($receipt->refresh()->outcome)->toBe(McpReplayRequest::OUTCOME_ACCEPTED)
+        ->and($delivery->refresh()->status)->toBe(Delivery::STATUS_FAILED);
+    $deliveryStatus = productMcpContent(productMcpCall('/mcp', 'delivery_status', [
+        'endpoint_id' => $arguments['endpoint_id'],
+        'capture_id' => $arguments['capture_id'],
+    ], $token));
+    expect($deliveryStatus['items'][0]['status'])->toBe(Delivery::STATUS_FAILED);
     Queue::assertNothingPushed();
+});
+
+it('reconciles every failed terminal settlement from durable evidence without redispatching', function (): void {
+    $unknownToken = productMcpToken();
+    $teamId = (int) DB::table('teams')->value('id');
+    $endpoint = productMcpEndpoint($teamId);
+    $capture = $endpoint->capturedRequests()->create([
+        'method' => 'POST', 'raw_query' => '', 'headers' => [], 'body' => 'payload', 'received_at' => now(),
+    ]);
+    $destination = $endpoint->destinations()->create([
+        'url' => 'https://receiver.example.test/hook', 'is_active' => true,
+    ]);
+    $unknownArguments = [
+        'endpoint_id' => $endpoint->id,
+        'capture_id' => $capture->id,
+        'destination_id' => $destination->id,
+        'idempotency_key' => 'faulted-dispatch-unknown',
+    ];
+    app()->instance(ReplaySettlementFaultInjector::class, new class extends ReplaySettlementFaultInjector
+    {
+        public function beforeDispatchExceptionSettlement(): void
+        {
+            throw new RuntimeException('forced dispatch exception settlement failure');
+        }
+    });
+    $originalJobs = resolve(Dispatcher::class);
+    $jobs = Mockery::mock(Dispatcher::class);
+    $jobs->shouldReceive('dispatch')->once()->andThrow(new RuntimeException('forced queue transport failure'));
+    app()->instance(Dispatcher::class, $jobs);
+
+    productMcpCall('/mcp/write', 'replay_capture', $unknownArguments, $unknownToken)
+        ->assertOk()
+        ->assertJsonPath('result.isError', true);
+    $unknownReceipt = McpReplayRequest::query()->where('idempotency_key', 'faulted-dispatch-unknown')->firstOrFail();
+    expect($unknownReceipt->outcome)->toBe(McpReplayRequest::OUTCOME_IN_PROGRESS)
+        ->and($unknownReceipt->queue_accepted_at)->toBeNull();
+
+    app()->instance(Dispatcher::class, $originalJobs);
+    ['token' => $failedToken, 'arguments' => $failedArguments, 'delivery' => $failedDelivery, 'receipt' => $failedReceipt, 'job' => $failedJob] = queuedPendingProductMcpReplay('faulted-failed-job');
+    app()->instance(ReplaySettlementFaultInjector::class, new class extends ReplaySettlementFaultInjector
+    {
+        public function beforeFailedJobSettlement(): void
+        {
+            throw new RuntimeException('forced failed job settlement failure');
+        }
+    });
+    expect(fn () => $failedJob->failed(new RuntimeException('job exhausted')))
+        ->toThrow(RuntimeException::class, 'forced failed job settlement failure');
+    expect($failedReceipt->refresh()->outcome)->toBe(McpReplayRequest::OUTCOME_IN_PROGRESS)
+        ->and($failedReceipt->queue_accepted_at)->not->toBeNull()
+        ->and($failedDelivery->refresh()->status)->toBe(Delivery::STATUS_FAILED);
+
+    ['token' => $handledToken, 'arguments' => $handledArguments, 'delivery' => $handledDelivery, 'receipt' => $handledReceipt, 'job' => $handledJob] = queuedPendingProductMcpReplay('faulted-handled-job');
+    app()->instance(ReplaySettlementFaultInjector::class, new class extends ReplaySettlementFaultInjector
+    {
+        public function beforeHandledJobSettlement(): void
+        {
+            throw new RuntimeException('forced handled job settlement failure');
+        }
+    });
+    expect(fn () => $handledJob->handle())
+        ->toThrow(RuntimeException::class, 'forced handled job settlement failure');
+    expect($handledReceipt->refresh()->outcome)->toBe(McpReplayRequest::OUTCOME_IN_PROGRESS)
+        ->and($handledReceipt->queue_accepted_at)->not->toBeNull()
+        ->and($handledDelivery->refresh()->status)->toBe(Delivery::STATUS_QUEUED);
+
+    McpReplayRequest::query()->whereKey([
+        $unknownReceipt->id,
+        $failedReceipt->id,
+        $handledReceipt->id,
+    ])->update(['lease_expires_at' => now()->subSecond()]);
+
+    expect(Artisan::call('mcp-replays:reconcile'))->toBe(0)
+        ->and(Artisan::call('mcp-replays:reconcile'))->toBe(0)
+        ->and($unknownReceipt->refresh()->outcome)->toBe(McpReplayRequest::OUTCOME_UNKNOWN)
+        ->and($failedReceipt->refresh()->outcome)->toBe(McpReplayRequest::OUTCOME_ACCEPTED)
+        ->and($handledReceipt->refresh()->outcome)->toBe(McpReplayRequest::OUTCOME_ACCEPTED)
+        ->and(McpReplayRequest::query()->where('outcome', McpReplayRequest::OUTCOME_IN_PROGRESS)->count())->toBe(0);
+
+    $unknownRetry = productMcpCall('/mcp/write', 'replay_capture', $unknownArguments, $unknownToken)
+        ->assertOk()->assertJsonPath('result.isError', true);
+    $failedRetry = productMcpContent(productMcpCall('/mcp/write', 'replay_capture', $failedArguments, $failedToken));
+    $handledRetry = productMcpContent(productMcpCall('/mcp/write', 'replay_capture', $handledArguments, $handledToken));
+    expect(productMcpContent($unknownRetry))->toBe([
+        'outcome' => 'outcome_unknown',
+        'delivery_id' => $unknownReceipt->delivery_id,
+    ])->and($failedRetry['outcome'])->toBe('already_accepted')
+        ->and($failedRetry['delivery']['id'])->toBe($failedReceipt->delivery_id)
+        ->and($handledRetry['outcome'])->toBe('already_accepted')
+        ->and($handledRetry['delivery']['id'])->toBe($handledReceipt->delivery_id)
+        ->and(Queue::pushed(DeliverCapturedRequest::class)
+            ->filter(fn (DeliverCapturedRequest $queued): bool => $queued->replayRequestId === $failedReceipt->id))
+        ->toHaveCount(1)
+        ->and(Queue::pushed(DeliverCapturedRequest::class)
+            ->filter(fn (DeliverCapturedRequest $queued): bool => $queued->replayRequestId === $handledReceipt->id))
+        ->toHaveCount(1);
+});
+
+it('reconciles expired leases from delivery evidence and never changes terminal receipts', function (): void {
+    ['delivery' => $acceptedDelivery, 'receipt' => $acceptedReceipt] = pendingProductMcpReplay('delivery-evidence');
+    ['receipt' => $unknownReceipt] = pendingProductMcpReplay('no-delivery-evidence');
+    ['receipt' => $activeReceipt] = pendingProductMcpReplay('active-lease');
+    ['receipt' => $terminalReceipt] = pendingProductMcpReplay('terminal-is-immutable');
+    $acceptedDelivery->update([
+        'status' => Delivery::STATUS_RUNNING,
+        'attempt_count' => 1,
+        'started_at' => now(),
+    ]);
+    McpReplayRequest::query()->whereKey([$acceptedReceipt->id, $unknownReceipt->id])->update([
+        'lease_expires_at' => now()->subSecond(),
+    ]);
+    $terminalReceipt->update([
+        'outcome' => McpReplayRequest::OUTCOME_UNKNOWN,
+        'lease_expires_at' => now()->subSecond(),
+    ]);
+
+    expect(Artisan::call('mcp-replays:reconcile'))->toBe(0)
+        ->and($acceptedReceipt->refresh()->outcome)->toBe(McpReplayRequest::OUTCOME_ACCEPTED)
+        ->and($unknownReceipt->refresh()->outcome)->toBe(McpReplayRequest::OUTCOME_UNKNOWN)
+        ->and($activeReceipt->refresh()->outcome)->toBe(McpReplayRequest::OUTCOME_IN_PROGRESS)
+        ->and($terminalReceipt->refresh()->outcome)->toBe(McpReplayRequest::OUTCOME_UNKNOWN)
+        ->and($acceptedReceipt->lease_expires_at)->toBeNull()
+        ->and($unknownReceipt->lease_expires_at)->toBeNull()
+        ->and($activeReceipt->lease_expires_at)->not->toBeNull()
+        ->and($terminalReceipt->lease_expires_at)->not->toBeNull();
+
+    $event = collect(resolve(Schedule::class)->events())
+        ->first(fn ($event): bool => str_contains((string) $event->command, 'mcp-replays:reconcile'));
+    expect($event)->not->toBeNull()
+        ->and($event->expression)->toBe('* * * * *');
 });
 
 it('lets the queued delivery settle a confirmed failed acceptance write without redispatching', function (): void {

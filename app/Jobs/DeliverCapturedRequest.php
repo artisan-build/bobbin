@@ -50,7 +50,9 @@ final class DeliverCapturedRequest implements ShouldQueue
     public function handle(): void
     {
         if ($this->replayRequestId !== null) {
-            resolve(SettleReplayRequest::class)->accepted($this->replayRequestId);
+            $settlement = resolve(SettleReplayRequest::class);
+            $settlement->recordQueueAcceptance($this->replayRequestId);
+            $settlement->acceptedFromHandledJob($this->replayRequestId);
         }
 
         $shouldSend = DB::transaction(function (): bool {
@@ -141,7 +143,7 @@ final class DeliverCapturedRequest implements ShouldQueue
     public function failed(?Throwable $exception): void
     {
         if ($this->replayRequestId !== null) {
-            resolve(SettleReplayRequest::class)->unknown($this->replayRequestId);
+            resolve(SettleReplayRequest::class)->recordQueueAcceptance($this->replayRequestId);
         }
 
         Delivery::query()
@@ -153,6 +155,10 @@ final class DeliverCapturedRequest implements ShouldQueue
                 'last_error' => 'Delivery failed after an unexpected queue error.',
                 'completed_at' => now(),
             ]);
+
+        if ($this->replayRequestId !== null) {
+            resolve(SettleReplayRequest::class)->acceptedFromFailedJob($this->replayRequestId);
+        }
     }
 
     private function recordFailure(?int $status, string $error, bool $retryable): void

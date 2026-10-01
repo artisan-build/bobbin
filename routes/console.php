@@ -9,3 +9,4 @@ Artisan::command('inspire', function (): void {
 })->purpose('Display an inspiring quote');
 
 Schedule::command('captures:prune')->daily();
+Schedule::command('mcp-replays:reconcile')->everyMinute()->withoutOverlapping();

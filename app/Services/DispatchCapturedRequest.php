@@ -80,6 +80,7 @@ final readonly class DispatchCapturedRequest
                 'actor_identifier' => $actorIdentifier,
                 'idempotency_key' => $idempotencyKey,
                 'request_hash' => $requestHash,
+                'lease_expires_at' => $now->copy()->addSeconds(McpReplayRequest::LEASE_SECONDS),
                 'created_at' => $now,
                 'updated_at' => $now,
             ]);
@@ -166,7 +167,7 @@ final readonly class DispatchCapturedRequest
         try {
             $this->jobs->dispatch(new DeliverCapturedRequest($result->deliveryId, $result->replayRequestId));
         } catch (Throwable $exception) {
-            $outcome = $this->settlement->unknown($result->replayRequestId);
+            $outcome = $this->settlement->unknownFromDispatchException($result->replayRequestId);
 
             if ($outcome === McpReplayRequest::OUTCOME_ACCEPTED) {
                 return $this->withOutcome($result, McpReplayRequest::OUTCOME_ACCEPTED);
@@ -176,6 +177,7 @@ final readonly class DispatchCapturedRequest
         }
 
         try {
+            $this->settlement->recordQueueAcceptance($result->replayRequestId);
             $outcome = $this->settlement->accepted($result->replayRequestId);
         } catch (Throwable) {
             return $result;
