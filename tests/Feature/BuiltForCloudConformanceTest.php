@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Console\Commands\PruneCapturedRequests;
+use App\Console\Commands\RedispatchMcpReplayRequests;
 use App\Jobs\DeliverCapturedRequest;
 use App\Mcp\BobbinMcpServer;
 use App\Mcp\Tools\CapturesTool;
@@ -104,6 +105,7 @@ it('passes the version 1 reference-consumer conformance spec', function (): void
             OwnershipMintClaimCommand::class,
             OwnershipRemintOwnerTokenCommand::class,
             PruneCapturedRequests::class,
+            RedispatchMcpReplayRequests::class,
             PruneCredentialAuthorizationsCommand::class,
             SigningRootProvisionCommand::class,
             SubjectOffboardCommand::class,

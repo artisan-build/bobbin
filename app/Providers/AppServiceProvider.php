@@ -3,6 +3,7 @@
 namespace App\Providers;
 
 use App\Console\Commands\PruneCapturedRequests;
+use App\Console\Commands\RedispatchMcpReplayRequests;
 use App\Contracts\ResolvesHostAddresses;
 use App\Mcp\BobbinReadMcpServer;
 use App\Mcp\BobbinWriteMcpServer;
@@ -33,6 +34,7 @@ class AppServiceProvider extends ServiceProvider
 
         $this->commands([
             PruneCapturedRequests::class,
+            RedispatchMcpReplayRequests::class,
         ]);
     }
 
