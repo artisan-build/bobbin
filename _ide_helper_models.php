@@ -149,6 +149,8 @@ namespace App\Models{
  * @property int|null $delivery_destination_id
  * @property string|null $delivery_status
  * @property string $outcome
+ * @property Carbon|null $queue_accepted_at
+ * @property Carbon|null $lease_expires_at
  * @method static \Illuminate\Database\Eloquent\Builder<static>|McpReplayRequest newModelQuery()
  * @method static \Illuminate\Database\Eloquent\Builder<static>|McpReplayRequest newQuery()
  * @method static \Illuminate\Database\Eloquent\Builder<static>|McpReplayRequest query()
