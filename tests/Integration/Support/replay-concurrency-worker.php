@@ -4,10 +4,9 @@ declare(strict_types=1);
 
 use App\Models\McpReplayRequest;
 use App\Services\DispatchCapturedRequest;
+use App\Services\ReplayDispatchFaultInjector;
 use App\Services\ReplayIdempotencyConflict;
 use App\Services\ReplayOutcomeUnknown;
-use App\Services\ReplaySettlementFaultInjector;
-use App\Services\SettleReplayRequest;
 use Illuminate\Contracts\Bus\Dispatcher;
 use Illuminate\Contracts\Console\Kernel;
 use Illuminate\Support\Facades\DB;
@@ -38,8 +37,9 @@ $gatePath = $argv[2];
 $dispatchLog = $argv[3];
 $applicationName = $argv[4];
 $statementTimeout = (int) $argv[5];
-$dispatchGate = $argv[6] !== '' ? $argv[6] : null;
+$transactionGate = $argv[6] !== '' ? $argv[6] : null;
 $dispatchMustFail = $argv[7] === 'fail';
+$faultPhase = $argv[8] ?? '';
 
 $app = require dirname(__DIR__, 3).'/bootstrap/app.php';
 $app->make(Kernel::class)->bootstrap();
@@ -48,23 +48,59 @@ DB::statement("select set_config('statement_timeout', ?, false)", [(string) $sta
 
 $jobs = Mockery::mock(Dispatcher::class);
 $jobs->shouldReceive('dispatch')->zeroOrMoreTimes()->andReturnUsing(
-    static function (object $job) use ($dispatchGate, $dispatchLog, $dispatchMustFail): object {
+    static function (object $job) use ($dispatchLog, $dispatchMustFail): object {
         file_put_contents($dispatchLog, json_encode([
             'pid' => getmypid(),
             'delivery_id' => $job->deliveryId,
+            'replay_request_id' => $job->replayRequestId,
+            'dispatch_token' => $job->dispatchToken,
         ], JSON_THROW_ON_ERROR).PHP_EOL, FILE_APPEND | LOCK_EX);
 
         if ($dispatchMustFail) {
             throw new RuntimeException('Deliberately unrecoverable dispatch result.');
         }
 
-        while ($dispatchGate !== null && ! is_file($dispatchGate)) {
-            Sleep::usleep(1_000);
-        }
-
         return $job;
     },
 );
+$faults = new class($faultPhase, $transactionGate) extends ReplayDispatchFaultInjector
+{
+    public function __construct(
+        private readonly string $phase,
+        private readonly ?string $transactionGate,
+    ) {}
+
+    public function afterReceiptWrite(): void
+    {
+        $this->fail('receipt');
+    }
+
+    public function afterDeliveryWrite(): void
+    {
+        $this->fail('delivery');
+    }
+
+    public function afterOutboxWrite(): void
+    {
+        if ($this->transactionGate !== null) {
+            fwrite(STDOUT, 'TRANSACTION_READY '.getmypid().PHP_EOL);
+            fflush(STDOUT);
+
+            while (! is_file($this->transactionGate)) {
+                Sleep::usleep(1_000);
+            }
+        }
+
+        $this->fail('outbox');
+    }
+
+    private function fail(string $phase): void
+    {
+        if ($this->phase === $phase) {
+            throw new RuntimeException('Forced '.$phase.' transaction rollback.');
+        }
+    }
+};
 
 fwrite(STDOUT, 'READY '.getmypid().PHP_EOL);
 fflush(STDOUT);
@@ -81,7 +117,7 @@ while (! is_file($gatePath)) {
 $startedAt = microtime(true);
 
 try {
-    $result = (new DispatchCapturedRequest($jobs, new SettleReplayRequest(new ReplaySettlementFaultInjector)))->dispatchIdempotently(
+    $result = (new DispatchCapturedRequest($jobs, $faults))->dispatchIdempotently(
         teamId: (int) $request['team_id'],
         endpointId: (int) $request['endpoint_id'],
         captureId: (int) $request['capture_id'],

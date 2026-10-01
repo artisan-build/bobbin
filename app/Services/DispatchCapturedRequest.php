@@ -9,10 +9,12 @@ use App\Models\CapturedRequest;
 use App\Models\Delivery;
 use App\Models\Destination;
 use App\Models\Endpoint;
+use App\Models\McpReplayDispatch;
 use App\Models\McpReplayRequest;
 use Illuminate\Contracts\Bus\Dispatcher;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Throwable;
 use UnexpectedValueException;
 
@@ -20,7 +22,7 @@ final readonly class DispatchCapturedRequest
 {
     public function __construct(
         private Dispatcher $jobs,
-        private SettleReplayRequest $settlement,
+        private ReplayDispatchFaultInjector $faults,
     ) {}
 
     public function dispatch(CapturedRequest $capturedRequest): Delivery
@@ -74,16 +76,31 @@ final readonly class DispatchCapturedRequest
             $idempotencyKey,
             $requestHash,
         ): ReplayDispatchResult {
+            if (! $this->claimTransaction($actorIdentifier, $idempotencyKey, $requestHash)) {
+                return new ReplayDispatchResult(
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    true,
+                    McpReplayRequest::OUTCOME_IN_PROGRESS,
+                );
+            }
+
             $now = now();
             $inserted = McpReplayRequest::query()->insertOrIgnore([
                 'team_id' => $teamId,
                 'actor_identifier' => $actorIdentifier,
                 'idempotency_key' => $idempotencyKey,
                 'request_hash' => $requestHash,
-                'lease_expires_at' => $now->copy()->addSeconds(McpReplayRequest::LEASE_SECONDS),
+                'outcome' => McpReplayRequest::OUTCOME_IN_PROGRESS,
                 'created_at' => $now,
                 'updated_at' => $now,
             ]);
+            if ($inserted === 1) {
+                $this->faults->afterReceiptWrite();
+            }
             $replay = McpReplayRequest::query()
                 ->where('team_id', $teamId)
                 ->where('actor_identifier', $actorIdentifier)
@@ -137,13 +154,19 @@ final readonly class DispatchCapturedRequest
             $delivery = $destination->deliveries()->create([
                 'captured_request_id' => $capture->id,
             ]);
+            $this->faults->afterDeliveryWrite();
             $replay->update([
                 'delivery_id' => $delivery->id,
                 'delivery_capture_id' => $delivery->captured_request_id,
                 'delivery_destination_id' => $delivery->destination_id,
                 'delivery_status' => $delivery->status,
-                'outcome' => McpReplayRequest::OUTCOME_IN_PROGRESS,
+                'outcome' => McpReplayRequest::OUTCOME_ACCEPTED,
             ]);
+            McpReplayDispatch::query()->create([
+                'replay_request_id' => $replay->id,
+                'delivery_id' => $delivery->id,
+            ]);
+            $this->faults->afterOutboxWrite();
 
             return new ReplayDispatchResult(
                 $replay->id,
@@ -152,54 +175,50 @@ final readonly class DispatchCapturedRequest
                 $delivery->destination_id,
                 $delivery->status,
                 false,
-                McpReplayRequest::OUTCOME_IN_PROGRESS,
+                McpReplayRequest::OUTCOME_ACCEPTED,
             );
         });
 
         if ($result->duplicate) {
             if ($result->outcome === McpReplayRequest::OUTCOME_UNKNOWN) {
+                if ($result->deliveryId === null) {
+                    throw (new ModelNotFoundException)->setModel(McpReplayRequest::class);
+                }
+
                 throw new ReplayOutcomeUnknown($result->deliveryId);
             }
 
             return $result;
         }
 
-        try {
-            $this->jobs->dispatch(new DeliverCapturedRequest($result->deliveryId, $result->replayRequestId));
-        } catch (Throwable $exception) {
-            $outcome = $this->settlement->unknownFromDispatchException($result->replayRequestId);
-
-            if ($outcome === McpReplayRequest::OUTCOME_ACCEPTED) {
-                return $this->withOutcome($result, McpReplayRequest::OUTCOME_ACCEPTED);
-            }
-
-            throw new ReplayOutcomeUnknown($result->deliveryId, $exception);
-        }
-
-        try {
-            $this->settlement->recordQueueAcceptance($result->replayRequestId);
-            $outcome = $this->settlement->accepted($result->replayRequestId);
-        } catch (Throwable) {
+        if ($result->deliveryId === null || $result->replayRequestId === null) {
             return $result;
         }
 
-        if ($outcome === McpReplayRequest::OUTCOME_UNKNOWN) {
-            throw new ReplayOutcomeUnknown($result->deliveryId);
+        try {
+            $this->jobs->dispatch(new DeliverCapturedRequest(
+                $result->deliveryId,
+                $result->replayRequestId,
+                (string) Str::uuid(),
+            ));
+        } catch (Throwable $exception) {
+            report($exception);
         }
 
-        return $this->withOutcome($result, $outcome);
+        return $result;
     }
 
-    private function withOutcome(ReplayDispatchResult $result, string $outcome): ReplayDispatchResult
+    private function claimTransaction(string $actorIdentifier, string $idempotencyKey, string $requestHash): bool
     {
-        return new ReplayDispatchResult(
-            $result->replayRequestId,
-            $result->deliveryId,
-            $result->captureId,
-            $result->destinationId,
-            $result->status,
-            false,
-            $outcome,
+        if (DB::getDriverName() !== 'pgsql') {
+            return true;
+        }
+
+        $claim = DB::selectOne(
+            'select case when pg_try_advisory_xact_lock(hashtextextended(?, 0)) then 1 else 0 end as acquired',
+            [$actorIdentifier."\0".$idempotencyKey."\0".$requestHash],
         );
+
+        return (int) $claim->acquired === 1;
     }
 }

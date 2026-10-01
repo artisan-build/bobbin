@@ -29,7 +29,7 @@ use Laravel\Mcp\Server\Tools\Annotations\IsIdempotent;
 use UnexpectedValueException;
 
 #[Name('replay_capture')]
-#[Description('Queue one exact scoped capture to one exact active destination. Requires a caller idempotency key. Exact retries report in_progress while dispatch is unsettled, already_accepted after acceptance, or terminal outcome_unknown when the result cannot be recovered.')]
+#[Description('Queue one exact scoped capture to one exact active destination. Requires a caller idempotency key. accepted means durably committed for at-least-once delivery to the queue, not downstream delivery success. An exact overlapping transaction reports in_progress; a retry after commit reports already_accepted. outcome_unknown is terminal and reserved for an unknowable database commit result.')]
 #[IsIdempotent]
 #[ToolClassification(Classification::Content)]
 #[ToolEffect(Effect::Write)]
@@ -74,14 +74,15 @@ final class ReplayCaptureTool extends BobbinTool
             return $this->refused('not_found');
         }
 
-        return Response::structured([
-            'outcome' => match ($result->outcome) {
-                McpReplayRequest::OUTCOME_ACCEPTED => $result->duplicate ? 'already_accepted' : 'accepted',
-                McpReplayRequest::OUTCOME_IN_PROGRESS => 'in_progress',
-                default => throw new UnexpectedValueException('Unexpected replay outcome.'),
-            },
-            'delivery' => $this->deliveryHandle($result),
-        ]);
+        $outcome = match ($result->outcome) {
+            McpReplayRequest::OUTCOME_ACCEPTED => $result->duplicate ? 'already_accepted' : 'accepted',
+            McpReplayRequest::OUTCOME_IN_PROGRESS => 'in_progress',
+            default => throw new UnexpectedValueException('Unexpected replay outcome.'),
+        };
+
+        return Response::structured($result->deliveryId === null
+            ? ['outcome' => $outcome]
+            : ['outcome' => $outcome, 'delivery' => $this->deliveryHandle($result)]);
     }
 
     public function schema(JsonSchema $schema): array
@@ -101,6 +102,13 @@ final class ReplayCaptureTool extends BobbinTool
     /** @return array<string, mixed> */
     private function deliveryHandle(ReplayDispatchResult $result): array
     {
+        if ($result->deliveryId === null
+            || $result->captureId === null
+            || $result->destinationId === null
+            || $result->status === null) {
+            throw new UnexpectedValueException('The replay delivery handle is incomplete.');
+        }
+
         return [
             'id' => $result->deliveryId,
             'capture_id' => $result->captureId,
