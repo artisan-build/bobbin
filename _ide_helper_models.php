@@ -140,6 +140,22 @@ namespace App\Models{
 namespace App\Models{
 /**
  * @property int $id
+ * @property int $replay_request_id
+ * @property int $delivery_id
+ * @property string|null $claim_token
+ * @property Carbon|null $consumed_at
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|McpReplayDispatch newModelQuery()
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|McpReplayDispatch newQuery()
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|McpReplayDispatch query()
+ * @mixin \Eloquent
+ */
+	#[\AllowDynamicProperties]
+	final class IdeHelperMcpReplayDispatch {}
+}
+
+namespace App\Models{
+/**
+ * @property int $id
  * @property int $team_id
  * @property string $actor_identifier
  * @property string $idempotency_key
@@ -149,8 +165,6 @@ namespace App\Models{
  * @property int|null $delivery_destination_id
  * @property string|null $delivery_status
  * @property string $outcome
- * @property Carbon|null $queue_accepted_at
- * @property Carbon|null $lease_expires_at
  * @method static \Illuminate\Database\Eloquent\Builder<static>|McpReplayRequest newModelQuery()
  * @method static \Illuminate\Database\Eloquent\Builder<static>|McpReplayRequest newQuery()
  * @method static \Illuminate\Database\Eloquent\Builder<static>|McpReplayRequest query()
