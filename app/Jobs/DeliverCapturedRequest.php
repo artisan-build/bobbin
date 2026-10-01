@@ -6,6 +6,7 @@ namespace App\Jobs;
 
 use App\Models\CapturedRequest;
 use App\Models\Delivery;
+use App\Models\McpReplayDispatch;
 use App\Services\DestinationUrlPolicy;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
@@ -30,7 +31,11 @@ final class DeliverCapturedRequest implements ShouldQueue
 
     public int $timeout = 30;
 
-    public function __construct(public int $deliveryId) {}
+    public function __construct(
+        public int $deliveryId,
+        public ?int $replayRequestId = null,
+        public ?string $dispatchToken = null,
+    ) {}
 
     /** @return list<WithoutOverlapping> */
     public function middleware(): array
@@ -46,7 +51,15 @@ final class DeliverCapturedRequest implements ShouldQueue
     public function handle(): void
     {
         $shouldSend = DB::transaction(function (): bool {
-            $delivery = Delivery::query()->lockForUpdate()->findOrFail($this->deliveryId);
+            if (! $this->claimReplayDispatch()) {
+                return false;
+            }
+
+            $delivery = Delivery::query()->lockForUpdate()->find($this->deliveryId);
+
+            if ($delivery === null) {
+                return false;
+            }
 
             if ($delivery->isTerminal()) {
                 return false;
@@ -132,15 +145,72 @@ final class DeliverCapturedRequest implements ShouldQueue
 
     public function failed(?Throwable $exception): void
     {
-        Delivery::query()
-            ->whereKey($this->deliveryId)
-            ->whereNotIn('status', [Delivery::STATUS_SUCCEEDED, Delivery::STATUS_FAILED])
-            ->update([
-                'status' => Delivery::STATUS_FAILED,
-                'response_status' => null,
-                'last_error' => 'Delivery failed after an unexpected queue error.',
-                'completed_at' => now(),
+        DB::transaction(function (): void {
+            if (! $this->ownsReplayDispatch()) {
+                return;
+            }
+
+            if (Delivery::query()->lockForUpdate()->find($this->deliveryId) === null) {
+                return;
+            }
+
+            Delivery::query()
+                ->whereKey($this->deliveryId)
+                ->whereNotIn('status', [Delivery::STATUS_SUCCEEDED, Delivery::STATUS_FAILED])
+                ->update([
+                    'status' => Delivery::STATUS_FAILED,
+                    'response_status' => null,
+                    'last_error' => 'Delivery failed after an unexpected queue error.',
+                    'completed_at' => now(),
+                ]);
+        });
+    }
+
+    private function claimReplayDispatch(): bool
+    {
+        if ($this->replayRequestId === null) {
+            return true;
+        }
+
+        if ($this->dispatchToken === null) {
+            return false;
+        }
+
+        $intent = McpReplayDispatch::query()
+            ->where('replay_request_id', $this->replayRequestId)
+            ->where('delivery_id', $this->deliveryId)
+            ->lockForUpdate()
+            ->first();
+
+        if ($intent === null) {
+            return false;
+        }
+
+        if ($intent->claim_token === null) {
+            $intent->update([
+                'claim_token' => $this->dispatchToken,
+                'consumed_at' => now(),
             ]);
+
+            return true;
+        }
+
+        return hash_equals($intent->claim_token, $this->dispatchToken);
+    }
+
+    private function ownsReplayDispatch(): bool
+    {
+        if ($this->replayRequestId === null) {
+            return true;
+        }
+
+        return $this->dispatchToken !== null
+            && McpReplayDispatch::query()
+                ->where('replay_request_id', $this->replayRequestId)
+                ->where('delivery_id', $this->deliveryId)
+                ->where('claim_token', $this->dispatchToken)
+                ->whereNotNull('consumed_at')
+                ->exists();
     }
 
     private function recordFailure(?int $status, string $error, bool $retryable): void

@@ -140,6 +140,43 @@ namespace App\Models{
 namespace App\Models{
 /**
  * @property int $id
+ * @property int $replay_request_id
+ * @property int $delivery_id
+ * @property string|null $claim_token
+ * @property Carbon|null $consumed_at
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|McpReplayDispatch newModelQuery()
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|McpReplayDispatch newQuery()
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|McpReplayDispatch query()
+ * @mixin \Eloquent
+ */
+	#[\AllowDynamicProperties]
+	final class IdeHelperMcpReplayDispatch {}
+}
+
+namespace App\Models{
+/**
+ * @property int $id
+ * @property int $team_id
+ * @property string $actor_identifier
+ * @property string $idempotency_key
+ * @property string $request_hash
+ * @property int|null $delivery_id
+ * @property int|null $delivery_capture_id
+ * @property int|null $delivery_destination_id
+ * @property string|null $delivery_status
+ * @property string $outcome
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|McpReplayRequest newModelQuery()
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|McpReplayRequest newQuery()
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|McpReplayRequest query()
+ * @mixin \Eloquent
+ */
+	#[\AllowDynamicProperties]
+	final class IdeHelperMcpReplayRequest {}
+}
+
+namespace App\Models{
+/**
+ * @property int $id
  * @property string $name
  * @property \Carbon\CarbonImmutable|null $created_at
  * @property \Carbon\CarbonImmutable|null $updated_at

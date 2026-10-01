@@ -3,7 +3,13 @@
 declare(strict_types=1);
 
 use App\Console\Commands\PruneCapturedRequests;
+use App\Console\Commands\RedispatchMcpReplayRequests;
 use App\Jobs\DeliverCapturedRequest;
+use App\Mcp\BobbinMcpServer;
+use App\Mcp\Tools\CapturesTool;
+use App\Mcp\Tools\DeliveryStatusTool;
+use App\Mcp\Tools\EndpointsTool;
+use App\Mcp\Tools\ReplayCaptureTool;
 use ArtisanBuild\BuiltForCloud\Commands\ConsoleReKeyCommand;
 use ArtisanBuild\BuiltForCloud\Commands\ConsoleRetireKeyCommand;
 use ArtisanBuild\BuiltForCloud\Commands\CreateAdminCommand;
@@ -99,6 +105,7 @@ it('passes the version 1 reference-consumer conformance spec', function (): void
             OwnershipMintClaimCommand::class,
             OwnershipRemintOwnerTokenCommand::class,
             PruneCapturedRequests::class,
+            RedispatchMcpReplayRequests::class,
             PruneCredentialAuthorizationsCommand::class,
             SigningRootProvisionCommand::class,
             SubjectOffboardCommand::class,
@@ -119,7 +126,12 @@ it('passes the version 1 reference-consumer conformance spec', function (): void
             'ArtisanBuild\BuiltForCloud\Mcp\TwoPhaseConfirmationStore|built-for-cloud.manifest.slug|1',
             'ArtisanBuild\BuiltForCloud\UiCredentialPurposes|built-for-cloud.ui.credential_purposes|1',
         ]),
-        'mcp_delegated' => [],
+        'mcp_delegated' => $sorted([
+            CapturesTool::class,
+            DeliveryStatusTool::class,
+            EndpointsTool::class,
+            ReplayCaptureTool::class,
+        ]),
     ];
 
     $report = (new FleetConformance($this))->assert(new ConsumerConformance(
@@ -129,9 +141,9 @@ it('passes the version 1 reference-consumer conformance spec', function (): void
         sourceRoots: $sourceRoots,
         providerFiles: $providerFiles,
         runtimeAssertions: ['auth_schema', 'credential_listing', 'meta', 'transport_parity'],
-        capabilities: ['credentials', 'tokens'],
+        capabilities: ['credentials', 'mcp-delegated', 'mcp-effect-scoped', 'mcp-serve', 'tokens'],
         purposeMappings: $purposeMappings,
-        mcpServer: null,
+        mcpServer: BobbinMcpServer::class,
         expected: $expected,
     ));
 
