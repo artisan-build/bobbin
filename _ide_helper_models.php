@@ -144,9 +144,18 @@ namespace App\Models{
  * @property int $delivery_id
  * @property string|null $claim_token
  * @property Carbon|null $consumed_at
+ * @property \Carbon\CarbonImmutable|null $created_at
+ * @property \Carbon\CarbonImmutable|null $updated_at
  * @method static \Illuminate\Database\Eloquent\Builder<static>|McpReplayDispatch newModelQuery()
  * @method static \Illuminate\Database\Eloquent\Builder<static>|McpReplayDispatch newQuery()
  * @method static \Illuminate\Database\Eloquent\Builder<static>|McpReplayDispatch query()
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|McpReplayDispatch whereClaimToken($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|McpReplayDispatch whereConsumedAt($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|McpReplayDispatch whereCreatedAt($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|McpReplayDispatch whereDeliveryId($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|McpReplayDispatch whereId($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|McpReplayDispatch whereReplayRequestId($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|McpReplayDispatch whereUpdatedAt($value)
  * @mixin \Eloquent
  */
 	#[\AllowDynamicProperties]
@@ -165,9 +174,23 @@ namespace App\Models{
  * @property int|null $delivery_destination_id
  * @property string|null $delivery_status
  * @property string $outcome
+ * @property \Carbon\CarbonImmutable|null $created_at
+ * @property \Carbon\CarbonImmutable|null $updated_at
  * @method static \Illuminate\Database\Eloquent\Builder<static>|McpReplayRequest newModelQuery()
  * @method static \Illuminate\Database\Eloquent\Builder<static>|McpReplayRequest newQuery()
  * @method static \Illuminate\Database\Eloquent\Builder<static>|McpReplayRequest query()
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|McpReplayRequest whereActorIdentifier($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|McpReplayRequest whereCreatedAt($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|McpReplayRequest whereDeliveryCaptureId($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|McpReplayRequest whereDeliveryDestinationId($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|McpReplayRequest whereDeliveryId($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|McpReplayRequest whereDeliveryStatus($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|McpReplayRequest whereId($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|McpReplayRequest whereIdempotencyKey($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|McpReplayRequest whereOutcome($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|McpReplayRequest whereRequestHash($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|McpReplayRequest whereTeamId($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|McpReplayRequest whereUpdatedAt($value)
  * @mixin \Eloquent
  */
 	#[\AllowDynamicProperties]
