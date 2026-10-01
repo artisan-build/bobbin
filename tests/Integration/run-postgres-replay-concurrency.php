@@ -200,7 +200,10 @@ try {
     $changedResults = [concurrencyResult($changedA), concurrencyResult($changedB)];
     $changedOutcomes = array_column($changedResults, 'outcome');
     sort($changedOutcomes);
-    concurrencyEnsure($changedOutcomes === ['accepted', 'refused'], 'Changed request race did not produce one acceptance and one refusal.');
+    concurrencyEnsure(
+        $changedOutcomes === ['accepted', 'refused'],
+        'Changed request race did not produce one acceptance and one refusal: '.json_encode($changedResults, JSON_THROW_ON_ERROR),
+    );
     concurrencyEnsure(Delivery::query()->whereIn('captured_request_id', [$changed['capture_id'], $changedOther['capture_id']])->count() === 1, 'Changed request race created multiple deliveries.');
     concurrencyEnsure(McpReplayRequest::query()->where('idempotency_key', $changed['idempotency_key'])->count() === 1, 'Changed request race created multiple receipts.');
     concurrencyEnsure(count(concurrencyDispatches($changedDispatches)) === 1, 'Changed request race dispatched more than once.');
@@ -234,7 +237,9 @@ try {
             return $job;
         },
     );
-    $recoveryIntent->update(['created_at' => now()->subMinute()]);
+    McpReplayDispatch::query()
+        ->whereKey($recoveryIntent->id)
+        ->update(['created_at' => now()->subMinute()]);
     $redispatcher = new RedispatchReplayRequests($redispatchJobs);
     concurrencyEnsure($redispatcher->redispatch() === 1, 'First redispatch did not enqueue the eligible intent.');
     concurrencyEnsure($redispatcher->redispatch() === 1, 'Concurrent-safe repeat did not enqueue the same unconsumed intent.');

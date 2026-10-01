@@ -214,9 +214,14 @@ final readonly class DispatchCapturedRequest
             return true;
         }
 
+        $claimKey = hash('sha256', json_encode([
+            $actorIdentifier,
+            $idempotencyKey,
+            $requestHash,
+        ], JSON_THROW_ON_ERROR));
         $claim = DB::selectOne(
             'select case when pg_try_advisory_xact_lock(hashtextextended(?, 0)) then 1 else 0 end as acquired',
-            [$actorIdentifier."\0".$idempotencyKey."\0".$requestHash],
+            [$claimKey],
         );
 
         return (int) $claim->acquired === 1;
