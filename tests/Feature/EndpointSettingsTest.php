@@ -119,12 +119,17 @@ it('rejects retention outside the inclusive bound and malformed header names', f
     $endpoint = settingsEndpoint($teamId, 'Validation '.Str::random(12));
     actingAsSettingsUser($this, settingsUser($teamId));
 
+    $payload = [
+        'redacted_header_names' => $headerNames,
+        'body_redaction' => '0',
+    ];
+
+    if ($retentionDays !== null) {
+        $payload['retention_days'] = $retentionDays;
+    }
+
     $this->from(route('endpoint-settings.edit', $endpoint))
-        ->put(route('endpoint-settings.update', $endpoint), [
-            'retention_days' => $retentionDays,
-            'redacted_header_names' => $headerNames,
-            'body_redaction' => '0',
-        ])
+        ->put(route('endpoint-settings.update', $endpoint), $payload)
         ->assertRedirect(route('endpoint-settings.edit', $endpoint))
         ->assertSessionHasErrors();
 
@@ -134,6 +139,7 @@ it('rejects retention outside the inclusive bound and malformed header names', f
     'zero days' => [0, 'x-valid'],
     'more than one year' => [366, 'x-valid'],
     'fractional days' => ['3.5', 'x-valid'],
+    'absent days' => [null, 'x-valid'],
     'space in header name' => [30, 'x invalid'],
     'colon in header name' => [30, 'x-invalid: value'],
 ]);
