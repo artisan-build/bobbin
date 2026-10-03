@@ -75,7 +75,7 @@ final class EndpointSettingsController extends Controller
         $normalized = [];
 
         foreach (preg_split('/[\r\n,]+/', $headerNames) ?: [] as $headerName) {
-            $headerName = strtolower(trim($headerName));
+            $headerName = str_replace('_', '-', strtolower(trim($headerName)));
 
             if ($headerName !== '') {
                 $normalized[$headerName] = true;

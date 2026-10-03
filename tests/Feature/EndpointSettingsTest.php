@@ -93,6 +93,24 @@ it('shows settings from endpoint detail and normalizes explicit opt-ins', functi
         ->and($endpoint->body_redaction)->toBeTrue();
 });
 
+it('maps accepted underscore header names to the canonical dashed name Symfony captures', function (): void {
+    $teamId = settingsTeamId();
+    $endpoint = settingsEndpoint($teamId, 'Underscore canonicalization '.Str::random(12));
+    actingAsSettingsUser($this, settingsUser($teamId));
+
+    $this->put(route('endpoint-settings.update', $endpoint), [
+        'retention_days' => 30,
+        'redacted_header_names' => "X_Secret_Token, x_api_key\nX_Trace_Id",
+        'body_redaction' => '0',
+    ])->assertRedirect(route('endpoint-settings.edit', $endpoint));
+
+    expect($endpoint->refresh()->redacted_header_names)->toBe([
+        'x-secret-token',
+        'x-api-key',
+        'x-trace-id',
+    ]);
+});
+
 it('rejects retention outside the inclusive bound and malformed header names', function (
     mixed $retentionDays,
     string $headerNames,
