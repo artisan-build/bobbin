@@ -7,10 +7,14 @@ use App\Console\Commands\RedispatchMcpReplayRequests;
 use App\Contracts\ResolvesHostAddresses;
 use App\Mcp\BobbinReadMcpServer;
 use App\Mcp\BobbinWriteMcpServer;
+use App\Models\Team;
 use App\Services\NativeHostAddressResolver;
+use ArtisanBuild\BuiltForCloud\User;
 use Carbon\CarbonImmutable;
+use Illuminate\Auth\Events\Login;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Validation\Rules\Password;
 use Laravel\Mcp\Facades\Mcp;
@@ -48,6 +52,17 @@ class AppServiceProvider extends ServiceProvider
                 ->middleware('bfc.mcp:product,read');
             Mcp::web('/mcp/write', BobbinWriteMcpServer::class)
                 ->middleware('bfc.mcp:product,write');
+        });
+
+        Event::listen(Login::class, function (Login $event): void {
+            if (! $event->user instanceof User) {
+                return;
+            }
+
+            DB::table('team_user')->insertOrIgnore([
+                'team_id' => Team::query()->sole()->getKey(),
+                'user_id' => $event->user->getKey(),
+            ]);
         });
 
         $this->configureDefaults();
