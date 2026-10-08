@@ -51,9 +51,12 @@ it('lets the first and second users of a fresh install reach every main screen',
                 ->assertRedirect();
 
             $endpoint = Endpoint::query()->where('name', $endpointName)->sole();
-            $this->post(route('hooks.capture', $endpoint->public_id), [], [], [], [], [
-                'CONTENT_TYPE' => 'application/json',
-            ], '{"fresh":true}')->assertNoContent();
+            $this->call(
+                'POST',
+                route('hooks.capture', $endpoint->public_id),
+                server: ['CONTENT_TYPE' => 'application/json'],
+                content: '{"fresh":true}',
+            )->assertNoContent();
             $capture = CapturedRequest::query()->where('endpoint_id', $endpoint->getKey())->sole();
         }
 
