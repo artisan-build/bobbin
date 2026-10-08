@@ -67,28 +67,10 @@ repository.
    ```
 
    Keep `--local` here. Without it, this Built for Cloud command can select and change a Laravel Cloud
-   environment instead of your local database. Success prints `Admin user <email> created.`
+   environment instead of your local database. Success prints `Admin user <email> created.` On the
+   account's first successful sign-in, Bobbin enrols it into this installation's team automatically.
 
-4. Attach that Owner to Bobbin's team. The migrations create one team, but Owner creation does not join
-   it automatically; without this membership Bobbin returns `403`. This Tinker command is a temporary
-   workaround until Bobbin has a bootstrap command. Replace the example email with the address from step
-   3.
-
-   ```bash
-   php artisan tinker --execute='
-   $user = ArtisanBuild\BuiltForCloud\User::query()->where("email", "you@example.com")->firstOrFail();
-   $team = App\Models\Team::query()->firstOrFail();
-   Illuminate\Support\Facades\DB::table("team_user")->insertOrIgnore([
-       "team_id" => $team->id,
-       "user_id" => $user->id,
-   ]);
-   dump("Owner attached to Bobbin team.");
-   '
-   ```
-
-   You should see `Owner attached to Bobbin team.`
-
-5. Run the test suite.
+4. Run the test suite.
 
    ```bash
    composer test
@@ -96,7 +78,7 @@ repository.
 
    The command clears cached configuration, checks formatting, and runs the Pest tests.
 
-6. Start the web app.
+5. Start the web app.
 
    ```bash
    composer dev
@@ -104,7 +86,7 @@ repository.
 
    Leave this terminal open. The server prints its local URL, normally <http://localhost:8000>.
 
-7. In a second terminal, start the database queue worker. Replays remain queued if this process is not
+6. In a second terminal, start the database queue worker. Replays remain queued if this process is not
    running.
 
    ```bash
@@ -117,7 +99,7 @@ repository.
    terminal with `php artisan schedule:work`. Without it, run `php artisan captures:prune` manually when
    you want to remove expired captures.
 
-8. Open <http://localhost:8000/bfc/login> and sign in with the Owner from step 3. Create an endpoint,
+7. Open <http://localhost:8000/bfc/login> and sign in with the Owner from step 3. Create an endpoint,
    then open **Security settings** to choose retention, redaction, and one replay destination. The URL
    must be absolute public HTTP or HTTPS; delivery counts as succeeded only when the receiver answers
    with a `2xx` response.
@@ -133,7 +115,7 @@ repository.
    Save `http://127.0.0.1:9001/receive` as the destination. The receiver returns HTTP `202`. Never deploy
    `BOBBIN_ALLOW_PRIVATE_DESTINATIONS=true`.
 
-9. Copy the endpoint's capture URL and send it a request. The URL contains the endpoint's real public
+8. Copy the endpoint's capture URL and send it a request. The URL contains the endpoint's real public
    identifier; do not type the placeholder below literally.
 
    ```bash
@@ -246,26 +228,10 @@ These steps require interactive access to your own Laravel Cloud account.
    php artisan create-admin --environment=<cloud-environment>
    ```
 
-   Success prints `Admin user <email> created.`
+   Success prints `Admin user <email> created.` On the account's first successful sign-in, Bobbin enrols
+   it into this installation's team automatically.
 
-10. Attach the deployed Owner to the Bobbin team. This is the same temporary bootstrap workaround as
-    local step 4. Replace both placeholders.
-
-    ```bash
-    cloud tinker <cloud-environment> --code='
-    $user = ArtisanBuild\BuiltForCloud\User::query()->where("email", "you@example.com")->firstOrFail();
-    $team = App\Models\Team::query()->firstOrFail();
-    Illuminate\Support\Facades\DB::table("team_user")->insertOrIgnore([
-        "team_id" => $team->id,
-        "user_id" => $user->id,
-    ]);
-    dump("Owner attached to Bobbin team.");
-    '
-    ```
-
-    You should see `Owner attached to Bobbin team.`
-
-11. Copy the primary hostname opened by `cloud deploy` or shown in the Laravel Cloud dashboard. Request
+10. Copy the primary hostname opened by `cloud deploy` or shown in the Laravel Cloud dashboard. Request
     `https://<your-host>/up` and expect HTTP `200`. Then sign in at
     `https://<your-host>/bfc/login`, create an endpoint, and repeat the capture example with its HTTPS
     URL. A replay should move from `queued` to `succeeded` after the managed queue processes it.
@@ -275,8 +241,8 @@ These steps require interactive access to your own Laravel Cloud account.
 The browser UI is the management interface. Endpoint creation, capture inspection, security settings,
 replay, and delivery history require a signed-in Built for Cloud user.
 
-Bobbin has no member-management UI. To add another local operator, rerun local step 3 with `--force` and
-then repeat step 4 for that email. In Cloud, rerun Cloud step 9 with `--force` and then repeat step 10.
+Bobbin has no member-management UI. To add another local operator, rerun local step 3 with `--force`.
+In Cloud, rerun Cloud step 9 with `--force`. Bobbin enrols each account when it signs in successfully.
 
 The capture interface is public and accepts any HTTP method at `/hooks/{publicId}`. A successful capture
 returns `204`. Bobbin does not expose an app-specific JSON management API or MCP server in this release.
@@ -319,8 +285,8 @@ restricted to `APP_ENV=local` and must stay disabled in deployed environments.
 
 | Symptom | Check |
 | --- | --- |
-| The UI returns `403` after login | Run the team-attachment command from local step 4 or Cloud step 10 for that user. |
-| `create-admin` says an Owner already exists | Continue with the existing Owner, or add another Admin by rerunning the command with `--force`, then attach that user to the team. |
+| A previously signed-in user still sees `403` after upgrading | Sign out and back in once. A successful login enrols the user into Bobbin's team. |
+| `create-admin` says an Owner already exists | Continue with the existing Owner, or add another Admin by rerunning the command with `--force`. |
 | A replay stays `queued` locally | Start `php artisan queue:work`. |
 | A replay stays `queued` in Cloud | Confirm a managed queue is attached, set as default, and processing jobs. Do not set `QUEUE_CONNECTION` yourself. |
 | A destination is rejected | Use an absolute HTTP or HTTPS URL with a publicly routable host. Credentials, fragments, URL-template braces, unresolved hosts, and local or private addresses are rejected. Redirect responses are not followed and make delivery fail. |
