@@ -45,15 +45,14 @@ final class ReplayCaptureTool extends BobbinTool
         BobbinMcpScope $scope,
         DispatchCapturedRequest $dispatcher,
     ): Response|ResponseFactory {
+        $team = $scope->team();
+        $actorIdentifier = $scope->actorIdentifier();
         $validated = $this->validateArguments($request, [
             'endpoint_id' => ['required', 'integer', 'min:1'],
             'capture_id' => ['required', 'integer', 'min:1'],
             'destination_id' => ['required', 'integer', 'min:1'],
             'idempotency_key' => ['required', 'string', 'min:1', 'max:128', 'regex:/^[A-Za-z0-9._:-]+$/D'],
         ]);
-        $team = $scope->team();
-        $actorIdentifier = $scope->actorIdentifier();
-
         try {
             $result = $dispatcher->dispatchIdempotently(
                 teamId: $team->id,

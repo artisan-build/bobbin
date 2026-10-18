@@ -38,11 +38,11 @@ final class EndpointsTool extends BobbinTool
 
     public function handle(Request $request, BobbinMcpScope $scope): Response|ResponseFactory
     {
+        $team = $scope->team();
         $validated = $this->validateArguments($request, [
             'cursor' => ['sometimes', 'string', 'max:512'],
             'limit' => ['sometimes', 'integer:strict', 'min:1', 'max:100'],
         ]);
-        $team = $scope->team();
         $limit = (int) ($validated['limit'] ?? 25);
         $cursorScope = 'endpoints:'.$team->id;
 
