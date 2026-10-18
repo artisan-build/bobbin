@@ -48,6 +48,7 @@ final class DeliveryStatusTool extends BobbinTool
 
     public function handle(Request $request, BobbinMcpScope $scope): Response|ResponseFactory
     {
+        $team = $scope->team();
         $validated = $this->validateArguments($request, [
             'endpoint_id' => ['required', 'integer', 'min:1'],
             'capture_id' => ['sometimes', 'integer', 'min:1'],
@@ -57,7 +58,6 @@ final class DeliveryStatusTool extends BobbinTool
             'cursor' => ['sometimes', 'string', 'max:512'],
             'limit' => ['sometimes', 'integer:strict', 'min:1', 'max:100'],
         ]);
-        $team = $scope->team();
         $endpoint = Endpoint::query()->where('team_id', $team->id)->find((int) $validated['endpoint_id']);
 
         if (! $endpoint instanceof Endpoint) {

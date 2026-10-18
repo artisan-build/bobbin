@@ -5,60 +5,95 @@ declare(strict_types=1);
 namespace App\Mcp;
 
 use App\Models\Team;
+use ArtisanBuild\BuiltForCloud\Console\ActingPrincipal;
+use ArtisanBuild\BuiltForCloud\Console\ActingPrincipalResolver;
 use ArtisanBuild\BuiltForCloud\Console\DelegatedActor;
 use ArtisanBuild\BuiltForCloud\Credential;
+use ArtisanBuild\BuiltForCloud\Exceptions\ManagedAuthRefused;
+use ArtisanBuild\BuiltForCloud\ManagedAccountAccess;
+use ArtisanBuild\BuiltForCloud\ManagedAuthConnection;
+use ArtisanBuild\BuiltForCloud\OffboardedSubject;
+use ArtisanBuild\BuiltForCloud\RolePolicy;
 use ArtisanBuild\BuiltForCloud\User;
-use Illuminate\Contracts\Auth\Authenticatable;
-use Symfony\Component\HttpKernel\Exception\HttpException;
+use Illuminate\Http\Request;
 
-final class BobbinMcpScope
+final readonly class BobbinMcpScope
 {
+    public function __construct(
+        private Request $request,
+        private ActingPrincipalResolver $principals,
+        private ManagedAccountAccess $managedAccess,
+    ) {}
+
     public function team(): Team
     {
-        $principal = request()->user();
+        $principal = $this->principals->require($this->request);
+        $user = $principal->delegated
+            ? $this->delegatedUser($principal)
+            : $this->principals->localUser($this->request);
 
-        if ($principal instanceof User) {
-            return $this->teamForUser($principal->getAuthIdentifier());
+        if (! $user instanceof User) {
+            throw new UnsupportedMcpPrincipal;
         }
 
-        if ($principal instanceof Credential && $principal->user_id !== null) {
-            return $this->teamForUser($principal->user_id);
-        }
+        $team = Team::query()
+            ->join('team_user', 'team_user.team_id', '=', 'teams.id')
+            ->where('team_user.user_id', $user->getKey())
+            ->select('teams.*')
+            ->first();
 
-        abort_unless($principal instanceof DelegatedActor || $principal instanceof Credential, 403);
-
-        return Team::query()->orderBy('id')->firstOrFail();
+        return $team instanceof Team ? $team : throw new UnsupportedMcpPrincipal;
     }
 
     public function actorIdentifier(): string
     {
-        $principal = request()->user();
-        abort_unless($principal instanceof Authenticatable, 403);
+        $principal = $this->principals->require($this->request);
+        $identifier = $principal->identifier();
 
-        $identifier = $principal->getAuthIdentifier();
-        abort_unless(is_int($identifier) || is_string($identifier), 403);
+        if (! is_int($identifier) && ! is_string($identifier)) {
+            throw new UnsupportedMcpPrincipal;
+        }
 
         return match (true) {
-            $principal instanceof DelegatedActor => (string) $identifier,
-            $principal instanceof Credential => 'credential:'.$identifier,
-            $principal instanceof User => 'user:'.$identifier,
-            default => throw new HttpException(403),
+            $principal->delegated => (string) $identifier,
+            $principal->principal instanceof Credential => 'credential:'.$identifier,
+            $principal->principal instanceof User => 'user:'.$identifier,
+            default => throw new UnsupportedMcpPrincipal,
         };
     }
 
-    private function teamForUser(mixed $userId): Team
+    private function delegatedUser(ActingPrincipal $principal): ?User
     {
-        abort_unless(is_int($userId) || is_string($userId), 403);
+        $actor = $principal->delegatedActor;
 
-        $team = Team::query()
-            ->join('team_user', 'team_user.team_id', '=', 'teams.id')
-            ->where('team_user.user_id', $userId)
-            ->select('teams.*')
-            ->orderBy('teams.id')
+        if (! $actor instanceof DelegatedActor) {
+            return null;
+        }
+
+        try {
+            $connection = ManagedAuthConnection::current();
+        } catch (ManagedAuthRefused) {
+            return null;
+        }
+
+        if (! hash_equals($connection->issuer, $actor->issuer)) {
+            return null;
+        }
+
+        $user = User::query()
+            ->where('scalpels_issuer', $connection->issuer)
+            ->where('scalpels_connection_id', $connection->connectionId)
+            ->where('scalpels_id', $actor->subject)
             ->first();
 
-        abort_unless($team instanceof Team, 403);
+        if (! $user instanceof User
+            || $user->status !== 'active'
+            || ! RolePolicy::canUseProduct($user->role)
+            || OffboardedSubject::userOrSubjectIsOffboarded($this->request, $user)
+            || ! $this->managedAccess->allows($user)) {
+            return null;
+        }
 
-        return $team;
+        return $user;
     }
 }
