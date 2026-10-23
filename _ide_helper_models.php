@@ -24,10 +24,19 @@ namespace App\Models{
  * @property Carbon $received_at
  * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\Delivery> $deliveries
  * @property-read int|null $deliveries_count
- * @property-read \App\Models\Endpoint|null $endpoint
+ * @property-read \App\Models\Endpoint $endpoint
  * @method static \Illuminate\Database\Eloquent\Builder<static>|CapturedRequest newModelQuery()
  * @method static \Illuminate\Database\Eloquent\Builder<static>|CapturedRequest newQuery()
  * @method static \Illuminate\Database\Eloquent\Builder<static>|CapturedRequest query()
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|CapturedRequest whereBody($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|CapturedRequest whereBodyRedacted($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|CapturedRequest whereEndpointId($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|CapturedRequest whereHeaders($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|CapturedRequest whereId($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|CapturedRequest whereMethod($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|CapturedRequest whereRawQuery($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|CapturedRequest whereReceivedAt($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|CapturedRequest whereRedactedHeaderNames($value)
  * @mixin \Eloquent
  */
 	#[\AllowDynamicProperties]
@@ -45,11 +54,24 @@ namespace App\Models{
  * @property string|null $last_error
  * @property Carbon|null $started_at
  * @property Carbon|null $completed_at
- * @property-read \App\Models\CapturedRequest|null $capturedRequest
- * @property-read \App\Models\Destination|null $destination
+ * @property \Carbon\CarbonImmutable|null $created_at
+ * @property \Carbon\CarbonImmutable|null $updated_at
+ * @property-read \App\Models\CapturedRequest $capturedRequest
+ * @property-read \App\Models\Destination $destination
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Delivery newModelQuery()
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Delivery newQuery()
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Delivery query()
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|Delivery whereAttemptCount($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|Delivery whereCapturedRequestId($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|Delivery whereCompletedAt($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|Delivery whereCreatedAt($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|Delivery whereDestinationId($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|Delivery whereId($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|Delivery whereLastError($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|Delivery whereResponseStatus($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|Delivery whereStartedAt($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|Delivery whereStatus($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|Delivery whereUpdatedAt($value)
  * @mixin \Eloquent
  */
 	#[\AllowDynamicProperties]
@@ -62,12 +84,20 @@ namespace App\Models{
  * @property int $endpoint_id
  * @property string $url
  * @property bool $is_active
+ * @property \Carbon\CarbonImmutable|null $created_at
+ * @property \Carbon\CarbonImmutable|null $updated_at
  * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\Delivery> $deliveries
  * @property-read int|null $deliveries_count
- * @property-read \App\Models\Endpoint|null $endpoint
+ * @property-read \App\Models\Endpoint $endpoint
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Destination newModelQuery()
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Destination newQuery()
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Destination query()
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|Destination whereCreatedAt($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|Destination whereEndpointId($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|Destination whereId($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|Destination whereIsActive($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|Destination whereUpdatedAt($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|Destination whereUrl($value)
  * @mixin \Eloquent
  */
 	#[\AllowDynamicProperties]
@@ -83,6 +113,8 @@ namespace App\Models{
  * @property int $retention_days
  * @property list<string> $redacted_header_names
  * @property bool $body_redaction
+ * @property \Carbon\CarbonImmutable|null $created_at
+ * @property \Carbon\CarbonImmutable|null $updated_at
  * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\CapturedRequest> $capturedRequests
  * @property-read int|null $captured_requests_count
  * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\Destination> $destinations
@@ -90,6 +122,15 @@ namespace App\Models{
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Endpoint newModelQuery()
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Endpoint newQuery()
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Endpoint query()
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|Endpoint whereBodyRedaction($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|Endpoint whereCreatedAt($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|Endpoint whereId($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|Endpoint whereName($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|Endpoint wherePublicId($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|Endpoint whereRedactedHeaderNames($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|Endpoint whereRetentionDays($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|Endpoint whereTeamId($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|Endpoint whereUpdatedAt($value)
  * @mixin \Eloquent
  */
 	#[\AllowDynamicProperties]
@@ -103,9 +144,18 @@ namespace App\Models{
  * @property int $delivery_id
  * @property string|null $claim_token
  * @property Carbon|null $consumed_at
+ * @property \Carbon\CarbonImmutable|null $created_at
+ * @property \Carbon\CarbonImmutable|null $updated_at
  * @method static \Illuminate\Database\Eloquent\Builder<static>|McpReplayDispatch newModelQuery()
  * @method static \Illuminate\Database\Eloquent\Builder<static>|McpReplayDispatch newQuery()
  * @method static \Illuminate\Database\Eloquent\Builder<static>|McpReplayDispatch query()
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|McpReplayDispatch whereClaimToken($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|McpReplayDispatch whereConsumedAt($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|McpReplayDispatch whereCreatedAt($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|McpReplayDispatch whereDeliveryId($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|McpReplayDispatch whereId($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|McpReplayDispatch whereReplayRequestId($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|McpReplayDispatch whereUpdatedAt($value)
  * @mixin \Eloquent
  */
 	#[\AllowDynamicProperties]
@@ -124,9 +174,23 @@ namespace App\Models{
  * @property int|null $delivery_destination_id
  * @property string|null $delivery_status
  * @property string $outcome
+ * @property \Carbon\CarbonImmutable|null $created_at
+ * @property \Carbon\CarbonImmutable|null $updated_at
  * @method static \Illuminate\Database\Eloquent\Builder<static>|McpReplayRequest newModelQuery()
  * @method static \Illuminate\Database\Eloquent\Builder<static>|McpReplayRequest newQuery()
  * @method static \Illuminate\Database\Eloquent\Builder<static>|McpReplayRequest query()
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|McpReplayRequest whereActorIdentifier($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|McpReplayRequest whereCreatedAt($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|McpReplayRequest whereDeliveryCaptureId($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|McpReplayRequest whereDeliveryDestinationId($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|McpReplayRequest whereDeliveryId($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|McpReplayRequest whereDeliveryStatus($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|McpReplayRequest whereId($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|McpReplayRequest whereIdempotencyKey($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|McpReplayRequest whereOutcome($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|McpReplayRequest whereRequestHash($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|McpReplayRequest whereTeamId($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|McpReplayRequest whereUpdatedAt($value)
  * @mixin \Eloquent
  */
 	#[\AllowDynamicProperties]
@@ -137,11 +201,17 @@ namespace App\Models{
 /**
  * @property int $id
  * @property string $name
+ * @property \Carbon\CarbonImmutable|null $created_at
+ * @property \Carbon\CarbonImmutable|null $updated_at
  * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\Endpoint> $endpoints
  * @property-read int|null $endpoints_count
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Team newModelQuery()
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Team newQuery()
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Team query()
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|Team whereCreatedAt($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|Team whereId($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|Team whereName($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|Team whereUpdatedAt($value)
  * @mixin \Eloquent
  */
 	#[\AllowDynamicProperties]
