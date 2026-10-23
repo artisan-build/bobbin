@@ -8,22 +8,25 @@ use App\Mcp\BobbinMcpScope;
 use App\Mcp\BobbinMcpServer;
 use App\Mcp\BobbinReadMcpServer;
 use App\Mcp\BobbinWriteMcpServer;
+use App\Mcp\UnsupportedMcpPrincipal;
 use App\Models\CapturedRequest;
 use App\Models\Delivery;
 use App\Models\Endpoint;
 use App\Models\McpReplayDispatch;
 use App\Models\McpReplayRequest;
+use App\Models\Team;
 use App\Services\RedispatchReplayRequests;
 use App\Services\ReplayDispatchFaultInjector;
-use ArtisanBuild\BuiltForCloud\Console\ConsoleRole;
-use ArtisanBuild\BuiltForCloud\Console\DelegatedActor;
 use ArtisanBuild\BuiltForCloud\Credential;
 use ArtisanBuild\BuiltForCloud\CredentialKind;
 use ArtisanBuild\BuiltForCloud\CredentialPurpose;
 use ArtisanBuild\BuiltForCloud\CredentialStatus;
+use ArtisanBuild\BuiltForCloud\OffboardedSubject;
 use ArtisanBuild\BuiltForCloud\SubjectType;
 use ArtisanBuild\BuiltForCloud\Testing\McpDelegatedTools;
 use ArtisanBuild\BuiltForCloud\Testing\McpProductAdmission;
+use ArtisanBuild\BuiltForCloud\User;
+use ArtisanBuild\BuiltForCloud\UserRole;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Contracts\Bus\Dispatcher;
 use Illuminate\Support\Facades\Artisan;
@@ -32,6 +35,7 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
 use Illuminate\Testing\TestResponse;
+use Tests\Support\BobbinManagedMcpContext;
 use Tests\Support\ReplayHostResolver;
 
 beforeEach(function (): void {
@@ -45,12 +49,24 @@ beforeEach(function (): void {
 function productMcpToken(string $subjectRef = 'bobbin-installation'): string
 {
     $token = 'bobbin-mcp-'.Str::random(32);
+    $user = new User;
+    $user->forceFill([
+        'name' => 'Product MCP user',
+        'email' => Str::uuid().'@bobbin.test',
+        'role' => UserRole::Member->value,
+        'status' => 'active',
+    ])->save();
+    DB::table('team_user')->insert([
+        'team_id' => Team::query()->sole()->getKey(),
+        'user_id' => $user->getKey(),
+    ]);
 
     Credential::query()->create([
         'kind' => CredentialKind::Bearer,
         'purpose' => CredentialPurpose::Mcp,
-        'subject_type' => SubjectType::Installation,
+        'subject_type' => SubjectType::UserPrincipal,
         'subject_ref' => $subjectRef,
+        'user_id' => (string) $user->getKey(),
         'name' => 'product-mcp',
         'status' => CredentialStatus::Active,
         'secret_hash' => hash('sha256', $token),
@@ -590,14 +606,75 @@ it('partitions replay idempotency by the authenticated actor', function (): void
 });
 
 it('preserves the type-qualified delegated actor identifier', function (): void {
-    $actor = DelegatedActor::query()->create([
-        'identity_hash' => DelegatedActor::identityHash('https://scalpels.test', 'operator-1'),
-        'issuer' => 'https://scalpels.test',
-        'subject' => 'operator-1',
-        'last_handoff_display_name' => 'Operator',
-        'last_handoff_role' => ConsoleRole::Member,
+    $issuer = 'https://scalpels.test';
+    BobbinManagedMcpContext::configure($issuer);
+    $user = BobbinManagedMcpContext::user($issuer, 'operator-1');
+    DB::table('team_user')->insert([
+        'team_id' => Team::query()->sole()->getKey(),
+        'user_id' => $user->getKey(),
     ]);
-    request()->setUserResolver(static fn (): DelegatedActor => $actor);
+    $actor = BobbinManagedMcpContext::publish($issuer, 'operator-1');
 
     expect(resolve(BobbinMcpScope::class)->actorIdentifier())->toBe('bfc-console:'.$actor->id);
 });
+
+it('does not collide a delegated actor identifier with the same local user id', function (): void {
+    $issuer = 'https://scalpels.test';
+    BobbinManagedMcpContext::configure($issuer);
+    $firstTeam = Team::query()->sole();
+    $secondTeam = new Team;
+    $secondTeam->name = 'Delegated actor team';
+    $secondTeam->save();
+    $collidingUser = BobbinManagedMcpContext::user($issuer, 'local-seven', ['id' => 7]);
+    $mappedUser = BobbinManagedMcpContext::user($issuer, 'delegated-seven');
+    DB::table('team_user')->insert([
+        ['team_id' => $firstTeam->getKey(), 'user_id' => $collidingUser->getKey()],
+        ['team_id' => $secondTeam->getKey(), 'user_id' => $mappedUser->getKey()],
+    ]);
+    BobbinManagedMcpContext::publish($issuer, 'delegated-seven', actorId: 7);
+    $scope = resolve(BobbinMcpScope::class);
+
+    expect($scope->actorIdentifier())->toBe('bfc-console:7')
+        ->and($scope->team()->getKey())->toBe($secondTeam->getKey())
+        ->not->toBe($firstTeam->getKey());
+});
+
+it('readably refuses an unbound delegated principal or one without team membership', function (string $case): void {
+    $issuer = 'https://scalpels.test';
+    BobbinManagedMcpContext::configure($issuer);
+
+    if ($case === 'missing membership') {
+        BobbinManagedMcpContext::user($issuer, 'unsupported-operator');
+    }
+
+    BobbinManagedMcpContext::publish($issuer, 'unsupported-operator');
+
+    expect(fn (): Team => resolve(BobbinMcpScope::class)->team())
+        ->toThrow(UnsupportedMcpPrincipal::class, 'This MCP principal is not supported.');
+})->with(['missing binding', 'missing membership']);
+
+it('readably refuses a mapped delegated user who fails lifecycle containment', function (string $gate): void {
+    $issuer = 'https://scalpels.test';
+    BobbinManagedMcpContext::configure($issuer);
+    $user = BobbinManagedMcpContext::user($issuer, 'contained-operator');
+    DB::table('team_user')->insert([
+        'team_id' => Team::query()->sole()->getKey(),
+        'user_id' => $user->getKey(),
+    ]);
+
+    if ($gate === 'inactive') {
+        $user->forceFill(['status' => 'inactive'])->save();
+    } else {
+        OffboardedSubject::query()->create([
+            'subject_type' => SubjectType::UserPrincipal,
+            'subject_ref' => 'bobbin-user:'.$user->getKey(),
+            'user_id' => (string) $user->getKey(),
+            'offboarded_at' => now(),
+        ]);
+    }
+
+    BobbinManagedMcpContext::publish($issuer, 'contained-operator');
+
+    expect(fn (): Team => resolve(BobbinMcpScope::class)->team())
+        ->toThrow(UnsupportedMcpPrincipal::class, 'This MCP principal is not supported.');
+})->with(['inactive', 'offboarded']);

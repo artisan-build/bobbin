@@ -38,12 +38,12 @@ final class CapturesTool extends BobbinTool
 
     public function handle(Request $request, BobbinMcpScope $scope): Response|ResponseFactory
     {
+        $team = $scope->team();
         $validated = $this->validateArguments($request, [
             'endpoint_id' => ['required', 'integer', 'min:1'],
             'cursor' => ['sometimes', 'string', 'max:512'],
             'limit' => ['sometimes', 'integer:strict', 'min:1', 'max:100'],
         ]);
-        $team = $scope->team();
         $endpoint = Endpoint::query()
             ->where('team_id', $team->id)
             ->find((int) $validated['endpoint_id']);

@@ -10,6 +10,8 @@ use App\Mcp\Tools\CapturesTool;
 use App\Mcp\Tools\DeliveryStatusTool;
 use App\Mcp\Tools\EndpointsTool;
 use App\Mcp\Tools\ReplayCaptureTool;
+use App\Models\Endpoint;
+use App\Models\Team;
 use ArtisanBuild\BuiltForCloud\Commands\ConsoleReKeyCommand;
 use ArtisanBuild\BuiltForCloud\Commands\ConsoleRetireKeyCommand;
 use ArtisanBuild\BuiltForCloud\Commands\CreateAdminCommand;
@@ -25,15 +27,21 @@ use ArtisanBuild\BuiltForCloud\Commands\OutboxDrainCommand;
 use ArtisanBuild\BuiltForCloud\Commands\OwnershipMintClaimCommand;
 use ArtisanBuild\BuiltForCloud\Commands\OwnershipRemintOwnerTokenCommand;
 use ArtisanBuild\BuiltForCloud\Commands\PruneCredentialAuthorizationsCommand;
+use ArtisanBuild\BuiltForCloud\Commands\SigningRootEnsureCommand;
 use ArtisanBuild\BuiltForCloud\Commands\SigningRootProvisionCommand;
 use ArtisanBuild\BuiltForCloud\Commands\SubjectOffboardCommand;
 use ArtisanBuild\BuiltForCloud\Commands\WarnExpiringCredentialsCommand;
+use ArtisanBuild\BuiltForCloud\Console\ActingPrincipal;
 use ArtisanBuild\BuiltForCloud\CredentialPurpose;
 use ArtisanBuild\BuiltForCloud\Jobs\DeliverOwnershipWebhook;
 use ArtisanBuild\BuiltForCloud\Testing\ConsumerConformance;
 use ArtisanBuild\BuiltForCloud\Testing\ContractAssertions;
 use ArtisanBuild\BuiltForCloud\Testing\FleetConformance;
+use ArtisanBuild\BuiltForCloud\Testing\McpDelegatedEnforcement;
 use Composer\InstalledVersions;
+use Illuminate\Support\Facades\DB;
+use Laravel\Mcp\ResponseFactory;
+use Tests\Support\BobbinManagedMcpContext;
 
 uses(ContractAssertions::class);
 
@@ -59,6 +67,12 @@ it('passes the version 1 reference-consumer conformance spec', function (): void
 
         return $members;
     };
+    $mcpTools = $sorted([
+        CapturesTool::class,
+        DeliveryStatusTool::class,
+        EndpointsTool::class,
+        ReplayCaptureTool::class,
+    ]);
 
     $expected = [
         'runtime.meta' => [],
@@ -107,6 +121,7 @@ it('passes the version 1 reference-consumer conformance spec', function (): void
             PruneCapturedRequests::class,
             RedispatchMcpReplayRequests::class,
             PruneCredentialAuthorizationsCommand::class,
+            SigningRootEnsureCommand::class,
             SigningRootProvisionCommand::class,
             SubjectOffboardCommand::class,
             WarnExpiringCredentialsCommand::class,
@@ -126,13 +141,59 @@ it('passes the version 1 reference-consumer conformance spec', function (): void
             'ArtisanBuild\BuiltForCloud\Mcp\TwoPhaseConfirmationStore|built-for-cloud.manifest.slug|1',
             'ArtisanBuild\BuiltForCloud\UiCredentialPurposes|built-for-cloud.ui.credential_purposes|1',
         ]),
-        'mcp_delegated' => $sorted([
-            CapturesTool::class,
-            DeliveryStatusTool::class,
-            EndpointsTool::class,
-            ReplayCaptureTool::class,
-        ]),
+        'mcp_delegated' => $mcpTools,
     ];
+
+    $issuer = 'https://bfc-enforcement.test';
+    BobbinManagedMcpContext::configure($issuer);
+    $primaryUser = BobbinManagedMcpContext::user($issuer, 'bfc-enforcement-primary');
+    $secondaryUser = BobbinManagedMcpContext::user($issuer, 'bfc-enforcement-secondary');
+    $primaryTeam = Team::query()->sole();
+    $secondaryTeam = new Team;
+    $secondaryTeam->name = 'Secondary delegated team';
+    $secondaryTeam->save();
+    DB::table('team_user')->insert([
+        ['team_id' => $primaryTeam->getKey(), 'user_id' => $primaryUser->getKey()],
+        ['team_id' => $secondaryTeam->getKey(), 'user_id' => $secondaryUser->getKey()],
+    ]);
+
+    McpDelegatedEnforcement::assertHonors(
+        BobbinMcpServer::class,
+        $mcpTools,
+        negativeAuthorization: static function (
+            ActingPrincipal $first,
+            ActingPrincipal $second,
+            Closure $invoke,
+        ) use ($primaryTeam, $secondaryTeam): void {
+            expect($first->identifier())->not->toBe($second->identifier());
+
+            $primaryEndpoint = new Endpoint(['name' => 'Primary delegated subject only']);
+            $primaryEndpoint->team_id = $primaryTeam->getKey();
+            $primaryEndpoint->save();
+            $secondaryEndpoint = new Endpoint(['name' => 'Secondary delegated subject']);
+            $secondaryEndpoint->team_id = $secondaryTeam->getKey();
+            $secondaryEndpoint->save();
+
+            $response = $invoke(EndpointsTool::class);
+            expect($response)->toBeInstanceOf(ResponseFactory::class);
+            $ids = array_column($response->getStructuredContent()['items'], 'id');
+
+            expect($ids)->toContain($secondaryEndpoint->getKey())
+                ->not->toContain($primaryEndpoint->getKey());
+        },
+        arguments: [
+            ReplayCaptureTool::class => [
+                'endpoint_id' => PHP_INT_MAX,
+                'capture_id' => PHP_INT_MAX,
+                'destination_id' => PHP_INT_MAX,
+                'idempotency_key' => 'delegated-enforcement',
+            ],
+        ],
+    );
+    $secondaryTeam->endpoints()->delete();
+    DB::table('team_user')->where('team_id', $secondaryTeam->getKey())->delete();
+    $secondaryTeam->delete();
+    BobbinManagedMcpContext::restoreStandaloneAuthority();
 
     $report = (new FleetConformance($this))->assert(new ConsumerConformance(
         consumer: 'bobbin',
