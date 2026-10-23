@@ -503,15 +503,15 @@ it('protects destination values replay actions and delivery facts for every deni
     ]);
 
     $this->get(route('endpoint-settings.edit', $endpoint))
-        ->assertRedirect(route('bfc.login'))
+        ->assertRedirect(route('bfc.login', ['intended' => route('endpoint-settings.edit', $endpoint, false)]))
         ->assertDontSee($destinationSecret);
     $this->put(route('destinations.update', $endpoint), [
         'destination_url' => 'https://receiver.example.test/attacker',
-    ])->assertRedirect(route('bfc.login'));
+    ])->assertRedirect(route('bfc.login', ['intended' => route('destinations.update', $endpoint, false)]));
     $this->post(route('captures.replay', [$endpoint, $capture]))
-        ->assertRedirect(route('bfc.login'));
+        ->assertRedirect(route('bfc.login', ['intended' => route('captures.replay', [$endpoint, $capture], false)]));
     $this->get(route('captures.show', [$endpoint, $capture]))
-        ->assertRedirect(route('bfc.login'))
+        ->assertRedirect(route('bfc.login', ['intended' => route('captures.show', [$endpoint, $capture], false)]))
         ->assertDontSee($deliverySecret);
 
     actingAsReplayUser($this, replayUser($secondTeamId));

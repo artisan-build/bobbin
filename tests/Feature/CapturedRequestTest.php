@@ -406,10 +406,10 @@ it('does not disclose captures to a signed-out request', function (): void {
     ]);
 
     $this->get(route('captures.index', $endpoint))
-        ->assertRedirect(route('bfc.login'))
+        ->assertRedirect(route('bfc.login', ['intended' => route('captures.index', $endpoint, false)]))
         ->assertDontSee($secret);
     $this->get(route('captures.show', [$endpoint, $capture]))
-        ->assertRedirect(route('bfc.login'))
+        ->assertRedirect(route('bfc.login', ['intended' => route('captures.show', [$endpoint, $capture], false)]))
         ->assertDontSee($secret);
 });
 
