@@ -132,7 +132,26 @@ it('stores empty JSON and binary bodies byte exactly', function (string $body, s
     'empty' => ['', 'application/octet-stream'],
     'JSON' => ['{"message":"capture '.Str::random(12).'"}', 'application/json'],
     'binary' => ["\x00\xFF\xFE\x80binary\x00", 'application/octet-stream'],
+    'JSON with escaped slashes' => ['{"url":"https:\\/\\/example.test\\/hooks"}', 'application/json'],
+    'literal backslashes' => ['C:\\temp\\new \\x00 \\\\', 'text/plain'],
 ]);
+
+it('writes bodies to a PostgreSQL binary column in hex so a backslash cannot fail the insert', function (): void {
+    $capture = new CapturedRequest;
+    $capture->setConnection('pgsql');
+    $capture->body = '{"url":"https:\\/\\/example.test"}';
+
+    expect($capture->getAttributes()['body'])->toBe('\\x'.bin2hex('{"url":"https:\\/\\/example.test"}'));
+});
+
+it('reads a body the PostgreSQL driver returns as a stream back as its bytes', function (): void {
+    $stream = fopen('php://memory', 'r+');
+    fwrite($stream, "\x00binary\\body\xFF");
+
+    $capture = (new CapturedRequest)->setRawAttributes(['body' => $stream]);
+
+    expect($capture->body)->toBe("\x00binary\\body\xFF");
+});
 
 it('accepts Laravel webhook methods', function (string $method): void {
     $endpoint = captureEndpoint(captureTeamId(), $method.' '.Str::random(12));
