@@ -1,25 +1,45 @@
-<!DOCTYPE html>
-<html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
-    <head>
+<x-bfc-layout :title="filled($title ?? null) ? $title.' - '.config('app.name', 'Bobbin') : config('app.name', 'Bobbin')">
+    @push('head')
         @include('partials.head')
-    </head>
-    <body class="min-h-screen bg-stone-950 text-stone-100 antialiased">
-        <div class="min-h-screen bg-[radial-gradient(circle_at_top_right,_rgba(245,158,11,0.13),_transparent_36rem)]">
-            <header class="border-b border-white/10">
-                <div class="mx-auto flex max-w-6xl items-center justify-between px-5 py-5 sm:px-8">
-                    <a href="{{ route('endpoints.index') }}" class="flex items-center gap-3 text-lg font-semibold tracking-tight">
-                        <span class="grid size-9 place-items-center rounded-full border border-amber-400/60 bg-amber-400/10 text-amber-300">B</span>
-                        Bobbin
-                    </a>
-                    <a href="{{ route('endpoints.create') }}" class="rounded-full bg-amber-300 px-4 py-2 text-sm font-semibold text-stone-950 transition hover:bg-amber-200">
-                        New endpoint
-                    </a>
-                </div>
-            </header>
+    @endpush
 
-            <main class="mx-auto max-w-6xl px-5 py-12 sm:px-8 sm:py-16">
+    <x-slot:sidebar>
+        @php
+            $endpointsCurrent = request()->routeIs(
+                'endpoints.index',
+                'endpoints.show',
+                'captures.*',
+                'endpoint-settings.*',
+                'destinations.*',
+            );
+            $newEndpointCurrent = request()->routeIs('endpoints.create');
+        @endphp
+
+        <nav aria-label="Bobbin" data-testid="app-sidebar-navigation" class="grid gap-1">
+            <a
+                href="{{ route('endpoints.index') }}"
+                data-testid="app-nav-endpoints"
+                class="bfc-shell-link {{ $endpointsCurrent ? 'bg-amber-300/10 text-stone-950' : '' }}"
+                @if ($endpointsCurrent) aria-current="page" @endif
+            >
+                All endpoints
+            </a>
+            <a
+                href="{{ route('endpoints.create') }}"
+                data-testid="app-nav-new-endpoint"
+                class="bfc-shell-link {{ $newEndpointCurrent ? 'bg-amber-300/10 text-stone-950' : '' }}"
+                @if ($newEndpointCurrent) aria-current="page" @endif
+            >
+                New endpoint
+            </a>
+        </nav>
+    </x-slot:sidebar>
+
+    <div data-testid="app-main-content" class="min-h-screen bg-stone-950 text-stone-100">
+        <div class="min-h-screen bg-[radial-gradient(circle_at_top_right,_rgba(245,158,11,0.13),_transparent_36rem)]">
+            <div class="mx-auto max-w-6xl px-5 py-12 sm:px-8 sm:py-16">
                 @yield('content')
-            </main>
+            </div>
         </div>
-    </body>
-</html>
+    </div>
+</x-bfc-layout>
