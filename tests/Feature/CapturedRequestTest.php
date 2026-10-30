@@ -186,7 +186,8 @@ it('redacts every selected header value case-insensitively and preserves sentine
     $capture = CapturedRequest::query()->sole();
     $storedHeaders = json_encode($capture->headers, JSON_THROW_ON_ERROR);
 
-    expect($storedHeaders)->not->toContain($selectedFirst, $selectedSecond)
+    expect($storedHeaders)->not->toContain($selectedFirst)
+        ->not->toContain($selectedSecond)
         ->and($capture->headers['x-secret-token'])->toBe([
             CapturedRequest::REDACTION_MARKER,
             CapturedRequest::REDACTION_MARKER,
@@ -210,7 +211,8 @@ it('drops synthetic basic authentication headers before persistence', function (
     $capture = CapturedRequest::query()->sole();
     $storedHeaders = json_encode($capture->headers, JSON_THROW_ON_ERROR);
 
-    expect($storedHeaders)->not->toContain($username, $password)
+    expect($storedHeaders)->not->toContain($username)
+        ->not->toContain($password)
         ->and(array_key_exists('php-auth-user', $capture->headers))->toBeFalse()
         ->and(array_key_exists('php-auth-pw', $capture->headers))->toBeFalse()
         ->and(array_key_exists('php-auth-digest', $capture->headers))->toBeFalse()
