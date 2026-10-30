@@ -81,22 +81,21 @@ it('renders the complete app navigation once in the package sidebar and keeps pa
         ->and(sidebarShellQuery($xpath, '//*[@data-testid="app-sidebar-navigation" and not(ancestor::*[@data-testid="bfc-sidebar-slot"])]')->length)->toBe(0)
         ->and($destinations)->toBe([
             route('endpoints.index'),
-            route('endpoints.create'),
         ])
         ->and(sidebarShellQuery($xpath, '//*[@data-testid="app-nav-endpoints" and @aria-current="page"]')->length)->toBe(1)
-        ->and(sidebarShellQuery($xpath, '//*[@data-testid="app-nav-new-endpoint" and @aria-current]')->length)->toBe(0)
+        ->and(sidebarShellQuery($xpath, '//*[@data-testid="app-nav-new-endpoint"]')->length)->toBe(0)
+        ->and(sidebarShellQuery($xpath, '//*[@data-testid="endpoints-index"]//form[@data-testid="endpoints-new-form"][@action="'.route('endpoints.store').'"]//input[@name="name"]')->length)->toBe(1)
         ->and(sidebarShellQuery($xpath, '//*[@data-testid="bfc-main"]//*[@data-testid="app-main-content"]//*[@data-testid="endpoints-index"]')->length)->toBe(1)
         ->and(sidebarShellQuery($xpath, '//*[@data-testid="bfc-main"]//*[contains(text(), "'.$endpointName.'")]')->length)->toBeGreaterThan(0);
 });
 
-it('selects the new endpoint destination only on the create route', function (): void {
+it('still serves the standalone create page, which the sidebar no longer links', function (): void {
     config()->set('app.key', 'base64:'.base64_encode(random_bytes(32)));
     sidebarShellSignIn($this, sidebarShellUser());
 
     $xpath = sidebarShellDocument($this->get(route('endpoints.create'))->assertOk());
 
-    expect(sidebarShellQuery($xpath, '//*[@data-testid="app-nav-endpoints" and @aria-current]')->length)->toBe(0)
-        ->and(sidebarShellQuery($xpath, '//*[@data-testid="app-nav-new-endpoint" and @aria-current="page"]')->length)->toBe(1)
+    expect(sidebarShellQuery($xpath, '//*[@data-testid="app-nav-new-endpoint"]')->length)->toBe(0)
         ->and(sidebarShellQuery($xpath, '//*[@data-testid="bfc-main"]//*[@data-testid="endpoints-create"]')->length)->toBe(1)
         ->and(sidebarShellQuery($xpath, '//*[@data-testid="endpoints-create"]//form//input[@name="_token"]')->length)->toBe(1);
 });
@@ -126,6 +125,6 @@ it('keeps the endpoint destination selected throughout endpoint and capture scre
         $xpath = sidebarShellDocument($this->get($route)->assertOk());
 
         expect(sidebarShellQuery($xpath, '//*[@data-testid="app-nav-endpoints" and @aria-current="page"]')->length)->toBe(1)
-            ->and(sidebarShellQuery($xpath, '//*[@data-testid="app-nav-new-endpoint" and @aria-current]')->length)->toBe(0);
+            ->and(sidebarShellQuery($xpath, '//*[@data-testid="app-nav-new-endpoint"]')->length)->toBe(0);
     }
 });

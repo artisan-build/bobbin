@@ -132,7 +132,26 @@ it('stores empty JSON and binary bodies byte exactly', function (string $body, s
     'empty' => ['', 'application/octet-stream'],
     'JSON' => ['{"message":"capture '.Str::random(12).'"}', 'application/json'],
     'binary' => ["\x00\xFF\xFE\x80binary\x00", 'application/octet-stream'],
+    'JSON with escaped slashes' => ['{"url":"https:\\/\\/example.test\\/hooks"}', 'application/json'],
+    'literal backslashes' => ['C:\\temp\\new \\x00 \\\\', 'text/plain'],
 ]);
+
+it('writes bodies to a PostgreSQL binary column in hex so a backslash cannot fail the insert', function (): void {
+    $capture = new CapturedRequest;
+    $capture->setConnection('pgsql');
+    $capture->body = '{"url":"https:\\/\\/example.test"}';
+
+    expect($capture->getAttributes()['body'])->toBe('\\x'.bin2hex('{"url":"https:\\/\\/example.test"}'));
+});
+
+it('reads a body the PostgreSQL driver returns as a stream back as its bytes', function (): void {
+    $stream = fopen('php://memory', 'r+');
+    fwrite($stream, "\x00binary\\body\xFF");
+
+    $capture = (new CapturedRequest)->setRawAttributes(['body' => $stream]);
+
+    expect($capture->body)->toBe("\x00binary\\body\xFF");
+});
 
 it('accepts Laravel webhook methods', function (string $method): void {
     $endpoint = captureEndpoint(captureTeamId(), $method.' '.Str::random(12));
@@ -167,7 +186,8 @@ it('redacts every selected header value case-insensitively and preserves sentine
     $capture = CapturedRequest::query()->sole();
     $storedHeaders = json_encode($capture->headers, JSON_THROW_ON_ERROR);
 
-    expect($storedHeaders)->not->toContain($selectedFirst, $selectedSecond)
+    expect($storedHeaders)->not->toContain($selectedFirst)
+        ->not->toContain($selectedSecond)
         ->and($capture->headers['x-secret-token'])->toBe([
             CapturedRequest::REDACTION_MARKER,
             CapturedRequest::REDACTION_MARKER,
@@ -191,7 +211,8 @@ it('drops synthetic basic authentication headers before persistence', function (
     $capture = CapturedRequest::query()->sole();
     $storedHeaders = json_encode($capture->headers, JSON_THROW_ON_ERROR);
 
-    expect($storedHeaders)->not->toContain($username, $password)
+    expect($storedHeaders)->not->toContain($username)
+        ->not->toContain($password)
         ->and(array_key_exists('php-auth-user', $capture->headers))->toBeFalse()
         ->and(array_key_exists('php-auth-pw', $capture->headers))->toBeFalse()
         ->and(array_key_exists('php-auth-digest', $capture->headers))->toBeFalse()
