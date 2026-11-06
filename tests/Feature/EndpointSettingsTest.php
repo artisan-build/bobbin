@@ -187,13 +187,13 @@ it('does not disclose or change settings for signed-out and cross-team requests'
     ]);
 
     $this->get(route('endpoint-settings.edit', $endpoint))
-        ->assertRedirect(route('bfc.login'))
+        ->assertRedirect(route('bfc.login', ['intended' => route('endpoint-settings.edit', $endpoint, false)]))
         ->assertDontSee($secretHeader);
     $this->put(route('endpoint-settings.update', $endpoint), [
         'retention_days' => 1,
         'redacted_header_names' => 'x-attacker',
         'body_redaction' => '0',
-    ])->assertRedirect(route('bfc.login'))->assertDontSee($secretHeader);
+    ])->assertRedirect(route('bfc.login', ['intended' => route('endpoint-settings.update', $endpoint, false)]))->assertDontSee($secretHeader);
 
     actingAsSettingsUser($this, settingsUser($secondTeamId));
     $this->get(route('endpoint-settings.edit', $endpoint))

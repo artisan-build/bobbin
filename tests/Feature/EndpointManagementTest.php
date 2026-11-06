@@ -87,7 +87,7 @@ it('does not disclose endpoint data to an unauthenticated request', function ():
     $endpoint = endpointForTeam(endpointTeamId(), $name);
 
     $this->get(route('endpoints.show', $endpoint))
-        ->assertRedirect(route('bfc.login'))
+        ->assertRedirect(route('bfc.login', ['intended' => route('endpoints.show', $endpoint, false)]))
         ->assertDontSee($name);
 });
 

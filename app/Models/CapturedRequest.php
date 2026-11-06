@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use App\Casts\BinaryBody;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -62,6 +63,7 @@ final class CapturedRequest extends Model
     {
         return [
             'headers' => 'array',
+            'body' => BinaryBody::class,
             'redacted_header_names' => 'array',
             'body_redacted' => 'boolean',
             'received_at' => 'immutable_datetime',

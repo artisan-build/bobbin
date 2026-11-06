@@ -23,9 +23,23 @@
     --color-zinc-900: #171717;
     --color-zinc-950: #0a0a0a;
 
-    --color-accent: var(--color-neutral-800);
-    --color-accent-content: var(--color-neutral-800);
-    --color-accent-foreground: var(--color-white);
+    --color-accent: var(--color-clay-brown);
+    --color-accent-content: var(--color-clay-brown);
+    --color-accent-foreground: var(--color-clay-surface);
+
+    --color-clay-brown: #70472f;
+    --color-clay-dot: #a66c46;
+    --color-clay-edge: #d5bea0;
+    --color-clay-hairline: #e2d8c8;
+    --color-clay-ink: #33241a;
+    --color-clay-iron: #8a4b2f;
+    --color-clay-muted: #7c6e5e;
+    --color-clay-paper: #faf3e8;
+    --color-clay-raw: #e8d9c3;
+    --color-clay-sand: #eee2cf;
+    --color-clay-slip: #f6efe3;
+    --color-clay-soft: #4f4136;
+    --color-clay-surface: #fdf8f0;
 }
 
 @layer theme {
